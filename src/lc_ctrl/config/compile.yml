@@ -1,4 +1,7 @@
 ---
+# SV packages from OpenTitan's lifecycle controller (reg pkg, state pkg, main
+# lc_ctrl_pkg). Caliptra consumes only the types — the full lc_ctrl RTL is
+# not instantiated. Required by any IP that handles lifecycle signals.
 provides: [lc_ctrl_pkg]
 schema_version: 2.4.0
 requires:

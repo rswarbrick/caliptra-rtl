@@ -18,26 +18,27 @@
   fusesoc_core: lowrisc:dv:aes_sim:0.1
 
   // Testplan hjson file.
-  testplan: "{proj_root}/src/aes/data/aes_testplan.hjson"
+  testplan: "{proj_root}/hw/ip/aes/data/aes_testplan.hjson"
 
   // RAL spec - used to generate the RAL model.
-  ral_spec: "{proj_root}/src/aes/data/aes.hjson"
+  ral_spec: "{proj_root}/hw/ip/aes/data/aes.hjson"
 
   // Import additional common sim cfg files.
-  //
-  // Note: This is a much shorter list than the one in OpenTitan because the other items in that
-  // list depend on cip-lib, which is not yet ported.
-  import_cfgs: [// Project wide common sim cfg file
-                "{proj_root}/tools/dvsim/common_sim_cfg.hjson",
-                // Enable C compilation of AES model for DPI-C
-                "{proj_root}/src/aes/model/aes_model_sim_opts.hjson"]
+  import_cfgs: [
+    // Project wide common sim cfg file
+    "{proj_root}/tools/dvsim/common_sim_cfg.hjson",
+    // Enable C compilation of AES model for DPI-C
+    "{proj_root}/src/aes/model/aes_model_sim_opts.hjson",
+    // Common tests
+    "{proj_root}/tools/dvsim/tests/csr_tests.hjson"
+  ]
 
   // Add additional tops for simulation.
-  sim_tops: [ "aes_bind",
-              "aes_cov_bind",
-              "sec_cm_prim_sparse_fsm_flop_bind",
-              "sec_cm_prim_onehot_check_bind",
-              "aes_err_injection_bind"]
+  sim_tops: [
+    "aes_bind",
+    "aes_cov_bind",
+    "aes_err_injection_bind"
+  ]
 
 
   xcelium_cov_refine_files: []
@@ -62,25 +63,29 @@
       name: aes_unmasked
       build_opts: ["+define+EN_MASKING=0",
                    "+define+SBOX_IMPL=aes_pkg::SBoxImplCanright",
-                   "+define+EN_GCM=0"]
+                   "+define+EN_GCM=0",
+                   "+define+CLP_ASSERT_ON"]
     }
     {
       name: aes_masked
       build_opts: ["+define+EN_MASKING=1",
                    "+define+SBOX_IMPL=aes_pkg::SBoxImplDom",
-                   "+define+EN_GCM=0"]
+                   "+define+EN_GCM=0",
+                   "+define+CLP_ASSERT_ON"]
     }
     {
       name: aes_gcm_unmasked
       build_opts: ["+define+EN_MASKING=0",
                    "+define+SBOX_IMPL=aes_pkg::SBoxImplCanright",
-                   "+define+EN_GCM=1"]
+                   "+define+EN_GCM=1",
+                   "+define+CLP_ASSERT_ON"]
     }
     {
       name: aes_gcm_masked
       build_opts: ["+define+EN_MASKING=1",
                    "+define+SBOX_IMPL=aes_pkg::SBoxImplDom",
-                   "+define+EN_GCM=1"]
+                   "+define+EN_GCM=1",
+                   "+define+CLP_ASSERT_ON"]
     }
   ]
 
@@ -103,8 +108,9 @@
   ]
 
   // Enable cdc instrumentation.
-  run_opts: ["+uvm_set_verbosity={component_a},{id_a},{verbosity_a},{phase_a}",
-             "+cdc_instrumentation_enabled=1"
+  run_opts: [
+    "+uvm_set_verbosity={component_a},{id_a},{verbosity_a},{phase_a}",
+    "+cdc_instrumentation_enabled=1"
   ]
 
   // List of test specifications.
@@ -240,8 +246,14 @@
     }
     {
       name: stress
-      tests: ["aes_stress","aes_b2b", "aes_clear", "aes_config_error", "aes_smoke",
-              "aes_alert_reset"]
+      tests: [
+        "aes_stress",
+        "aes_b2b",
+        "aes_clear",
+        "aes_config_error",
+        "aes_smoke",
+        "aes_alert_reset"
+      ]
     }
   ]
 }

@@ -1,4 +1,7 @@
 ---
+# Side-channel-hardened (Boolean-masked) variant of the SHA-512 round
+# datapath plus its W memory. Wraps the standard sha512_ctrl register
+# interface; consumed by HMAC for HMAC-SHA-512 against power-analysis attacks.
 provides: [sha512_masked_core]
 schema_version: 2.4.0
 requires:
@@ -13,17 +16,18 @@ targets:
     tops: [sha512_masked_core]
   #rtl_lint:
     #directories: []
-    #waiver_files: 
+    #waiver_files:
       #- $COMPILE_ROOT/config/rtl_lint/sha512.waiver
       #- $COMPILE_ROOT/config/design_lint/sha512_ctrl/sglint_waivers
 ---
-provides: [sha512_masked_core_tb]  
+# Standalone testbench top for the masked SHA-512 core.
+provides: [sha512_masked_core_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha512_masked_core
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/sha512_masked_core_tb.sv

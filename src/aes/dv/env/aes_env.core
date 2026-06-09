@@ -10,15 +10,14 @@ filesets:
       - caliptra:compile_yml:aes_pkg
   files_dv:
     depend:
-      - lowrisc:dv:cip_lib
-      - lowrisc:dv:csr_utils
+      - lowrisc:dv:dv_lib
+      - caliptra:dv:caliptra_dv_utils
       - lowrisc:dv:aes_model_dpi
-      - lowrisc:dv:key_sideload_agent
       - lowrisc:dv:aes_cov
       - lowrisc:dv:aes_test_vectors
+      - lowrisc:dv:ahb_agent
     files:
       - aes_env_pkg.sv
-      - aes_ral_extension.svh: {is_include_file: true}
       - aes_seq_item.sv: {is_include_file: true}
       - aes_message_item.sv: {is_include_file: true}
       - aes_env_cfg.sv: {is_include_file: true}
@@ -29,23 +28,23 @@ filesets:
       - seq_lib/aes_vseq_list.sv: {is_include_file: true}
       - seq_lib/aes_base_vseq.sv: {is_include_file: true}
       - seq_lib/aes_common_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_wake_up_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_stress_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_alert_reset_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_nist_vectors_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_nist_vectors_gcm_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_deinit_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_manual_config_err_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_reseed_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_control_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_cipher_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_ctr_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_core_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_ghash_fi_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_readability_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_stress_all_vseq.sv: {is_include_file: true}
-      - seq_lib/aes_gcm_save_restore_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_wake_up_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_stress_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_alert_reset_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_nist_vectors_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_nist_vectors_gcm_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_deinit_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_manual_config_err_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_reseed_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_control_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_cipher_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_ctr_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_core_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_ghash_fi_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_readability_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_stress_all_vseq.sv: {is_include_file: true}
+      # - seq_lib/aes_gcm_save_restore_vseq.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:

@@ -13,7 +13,7 @@ interface aes_masking_reseed_if
   import aes_reg_pkg::*;
 #(
   parameter int unsigned EntropyWidth = edn_pkg::ENDPOINT_BUS_WIDTH,
-  parameter int unsigned StateWidth   = prim_trivium_pkg::BiviumStateWidth
+  parameter int unsigned StateWidth   = caliptra_prim_trivium_pkg::BiviumStateWidth
 ) (
   input logic clk_i,
   input logic rst_ni,

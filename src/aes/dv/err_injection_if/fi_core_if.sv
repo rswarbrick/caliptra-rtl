@@ -49,8 +49,8 @@ interface fi_core_if
     // pragma coverage off
 
     $assertoff(0, "tb.dut");
-    $asserton(1, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(1, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(1, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(1, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
     if (!uvm_hdl_check_path(intf_mul_array[target])) begin
       `uvm_fatal("fi_core_if", $sformatf("PATH NOT EXISTING %m"))
     end

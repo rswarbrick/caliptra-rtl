@@ -1,4 +1,6 @@
 ---
+# AXI shared types and SystemVerilog interface (`axi_if`). Required by every
+# in-tree AXI subordinate/manager component.
 provides: [axi_pkg]
 schema_version: 2.4.0
 targets:
@@ -13,6 +15,9 @@ targets:
       - $COMPILE_ROOT/rtl/axi_pkg.sv
       - $COMPILE_ROOT/rtl/axi_if.sv
 ---
+# Generic AXI subordinate adapter (read/write channels + arbiter + top
+# wrapper). Used as the standard way to expose Caliptra register/memory
+# blocks onto the AXI fabric.
 provides: [axi_sub]
 schema_version: 2.4.0
 requires:
@@ -30,6 +35,8 @@ targets:
       - $COMPILE_ROOT/rtl/axi_sub.sv
     tops: [axi_sub]
 ---
+# Thin AXI-attached SRAM wrapper built on top of axi_sub; used in testbenches
+# and as a reusable memory endpoint in integrations.
 provides: [caliptra_axi_sram]
 schema_version: 2.4.0
 requires:
@@ -42,6 +49,9 @@ targets:
       - $COMPILE_ROOT/rtl/caliptra_axi_sram.sv
     tops: [caliptra_axi_sram]
 ---
+# UVM register-model bundle for the AXI DMA. Single auto-generated UVM
+# reg-model file kept separate from the RTL provider so testbenches can pull
+# it in without dragging in the synthesizable AXI DMA implementation.
 provides: [axi_dma_uvm_pkg]
 schema_version: 2.4.0
 requires: []
@@ -49,8 +59,11 @@ targets:
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/axi_dma_reg_uvm.sv
+      - $COMPILE_ROOT/dv/reg_model/axi_dma_reg_uvm.sv
 ---
+# AXI DMA RTL: request interface, generated register file, read/write
+# managers, control FSM, and top wrapper. Used by soc_ifc/caliptra_top to
+# move data between Caliptra-internal memory and external AXI endpoints.
 provides: [axi_dma]
 schema_version: 2.4.0
 requires:
@@ -64,8 +77,8 @@ targets:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/axi_dma_req_if.sv
-      - $COMPILE_ROOT/rtl/axi_dma_reg_pkg.sv
-      - $COMPILE_ROOT/rtl/axi_dma_reg.sv
+      - $COMPILE_ROOT/rtl/generated/axi_dma_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/axi_dma_reg.sv
       - $COMPILE_ROOT/rtl/axi_mgr_rd.sv
       - $COMPILE_ROOT/rtl/axi_mgr_wr.sv
       - $COMPILE_ROOT/rtl/axi_dma_ctrl.sv
@@ -74,15 +87,17 @@ targets:
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/axi_dma_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/axi_dma_reg_pkg.sv
 ---
+# Functional-coverage collateral bound onto axi_dma_top: cover interface,
+# bind module, and SVA properties. Testbench-only.
 provides: [axi_dma_coverage]
 schema_version: 2.4.0
 requires:
   - axi_dma
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/axi_dma_top_cov_if.sv

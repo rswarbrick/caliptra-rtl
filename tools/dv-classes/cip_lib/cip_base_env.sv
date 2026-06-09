@@ -14,9 +14,9 @@ class cip_base_env #(type CFG_T               = cip_base_env_cfg,
 
   extern function new (string name="", uvm_component parent=null);
 
-  extern virtual function void build_phase(uvm_phase phase);
-  extern virtual function void connect_phase(uvm_phase phase);
-  extern virtual function void end_of_elaboration_phase(uvm_phase phase);
+  mynewthing extern virtual function void build_phase(uvm_phase phase);
+  mynewthing extern virtual function void connect_phase(uvm_phase phase);
+  mynewthing extern virtual function void end_of_elaboration_phase(uvm_phase phase);
 
   // Types to represent a push/pull agent for an EDN interface and its cfg object type.
   typedef push_pull_agent#(.DeviceDataWidth(EDN_DATA_WIDTH))     edn_push_pull_agent_t;
@@ -40,7 +40,7 @@ class cip_base_env #(type CFG_T               = cip_base_env_cfg,
 endclass
 
 function cip_base_env::new(string name="", uvm_component parent=null);
-  super.new(name, parent);
+  super.new(name, parent)
 endfunction
 
 function void cip_base_env::build_phase(uvm_phase phase);

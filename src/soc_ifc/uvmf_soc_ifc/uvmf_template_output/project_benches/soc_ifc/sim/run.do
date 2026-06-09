@@ -1,5 +1,3 @@
-
-
 quietly set svLibs ""
 quietly set extra_vsim_args ""
 

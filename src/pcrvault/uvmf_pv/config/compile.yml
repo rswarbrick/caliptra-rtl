@@ -1,4 +1,7 @@
 ---
+# UVMF-generated UVM testbench for the PCRVault: interface packages
+# (pv_rst / pv_read / pv_write), environment package with reg-model top,
+# parameters / sequences / tests, and hdl_top / hvl_top tops.
 provides: [uvmf_pv]
 schema_version: 2.4.0
 requires:
@@ -7,7 +10,7 @@ requires:
   - pcrvault
   - caliptra_top_defines
   - caliptra_top_reg_defines
-  - pcrvault_cov
+  - pcrvault_coverage
   - caliptra_prim
 targets:
   tb:

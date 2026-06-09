@@ -94,7 +94,7 @@ class aes_fi_vseq extends aes_base_vseq;
         if (wait_for_alert_clear) begin
           `uvm_fatal(`gfn, $sformatf("Was Able to finish without clearing reset"))
         end
-        wait_no_outstanding_access();
+        /* wait_no_outstanding_access(): no-op after csr_utils removal */;
         disable fork;
       end // fork
     join

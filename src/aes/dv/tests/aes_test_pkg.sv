@@ -5,7 +5,7 @@
 package aes_test_pkg;
   // dep packages
   import uvm_pkg::*;
-  import cip_base_pkg::*;
+  import dv_lib_pkg::*;
   import aes_env_pkg::*;
 
   // macro includes

@@ -1,4 +1,7 @@
 ---
+# HMAC-DRBG RTL: a single hmac_drbg module that uses hmac_ctrl as the
+# underlying PRF to implement the NIST SP 800-90A HMAC_DRBG construction.
+# Used by ECC/ECDSA for deterministic nonce generation.
 provides: [hmac_drbg]
 schema_version: 2.4.0
 requires:
@@ -11,14 +14,17 @@ targets:
       - $COMPILE_ROOT/rtl/hmac_drbg.sv
     tops: [hmac_drbg]
 ---
-provides: [hmac_drbg_tb]  
+# Standalone testbench top for HMAC-DRBG. The pre_exec step stages the
+# Python reference vector generator (hmac_drbg_ref.py) into the run dir so
+# the testbench can self-check against fresh vectors.
+provides: [hmac_drbg_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - hmac_drbg
   - hmac_drbg_coverage
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/hmac_drbg_tb.sv
@@ -34,13 +40,14 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [hmac_drbg_coverage]  
+# Functional-coverage collateral bound onto HMAC-DRBG. Testbench-only.
+provides: [hmac_drbg_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - hmac_drbg
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/hmac_drbg_cov_if.sv

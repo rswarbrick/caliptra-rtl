@@ -83,7 +83,7 @@ class aes_reseed_vseq extends aes_base_vseq;
     if (cfg.under_reset) return;
 
     // Wait for the DUT to become idle again. This happens once the reseed operation finishes.
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
   endtask
 
   // Wait a cycle and check that no reseed operation has been triggered.
@@ -106,7 +106,7 @@ class aes_reseed_vseq extends aes_base_vseq;
     if (!std::randomize(init_key)) `uvm_fatal(get_name(), "Failed to randomize init_key")
 
     // Wait for the DUT to be idle before writing the key.
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     if (cfg.under_reset) return;
 
     if (cfg.do_reseed) begin
@@ -123,7 +123,7 @@ class aes_reseed_vseq extends aes_base_vseq;
   // Do a backdoor read to get the value of the keymgr_key_i.valid port, treating 'x and 'z as
   // invalid.
   function bit snoop_sideload_valid();
-    string sideload_valid_path = "tb.dut.keymgr_key_i.valid";
+    string sideload_valid_path = "tb.dut.aes_inst.keymgr_key_i.valid";
     logic  valid;
 
     if (!uvm_hdl_check_path(sideload_valid_path)) begin
@@ -147,7 +147,7 @@ class aes_reseed_vseq extends aes_base_vseq;
       bit sideload_valid;
       bit sideload_enabled;
 
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       if (cfg.under_reset) return;
 
       // Make sure sideload is disabled.
@@ -230,13 +230,13 @@ class aes_reseed_vseq extends aes_base_vseq;
     bit cipher_out_valid;
     bit cipher_out_ready;
     string base_path = $sformatf("%s.%s",
-        "tb.dut.u_aes_core.u_aes_control", // Control module
+        "tb.dut.aes_inst.u_aes_core.u_aes_control", // Control module
         "gen_fsm[0].gen_fsm_p.u_aes_control_fsm_i.u_aes_control_fsm"); // FSM instance
     string block_ctr_path = $sformatf("%s.gen_block_ctr.block_ctr_q", base_path);
     string cipher_crypt_path = $sformatf("%s.crypt", base_path);
     string cipher_out_valid_path = $sformatf("%s.cipher_out_valid_i", base_path);
     string cipher_out_ready_path = $sformatf("%s.cipher_out_ready_o", base_path);
-    status_t status;
+    status_t aes_status;
 
     if (`EN_MASKING) begin
       // Check paths to signals we need to probe.
@@ -278,11 +278,11 @@ class aes_reseed_vseq extends aes_base_vseq;
         end else if (block_ctr == 0) begin
           // Check whether the DUT is actually busy. Unless it's doing a block operation, no reseed
           // operation is getting triggered.
-          csr_rd(.ptr(ral.status), .value(status), .blocking(1), .backdoor(1));
+          ral.aes_core.STATUS.read(status, aes_status, .path(UVM_BACKDOOR));
           if (cfg.under_reset) return;
 
           `DV_CHECK_FATAL(uvm_hdl_read(cipher_crypt_path, cipher_crypt))
-          if (!status.idle && cipher_crypt) begin
+          if (!aes_status.idle && cipher_crypt) begin
             // Check entropy_masking_req to verify the reseeding is actually triggered.
             check_masking_prng_reseed();
             if (cfg.under_reset) return;

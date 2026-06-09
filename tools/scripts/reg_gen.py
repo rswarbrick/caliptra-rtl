@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,63 +11,94 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# This script generates systemverilog registers from rdl files
-# Currently, this script uses peakrdl-regblock version 0.6.0
-#
-#   pip install peakrdl-regblock==0.6.0
-# 
-# TODO: To update this script to the latest version (0.11.0)
-# 1.  Import ALL_UDPS
-#     from peakrdl_regblock.udps import ALL_UDPS
-# 2.  Register ALL_UDPS after creating instance of compiler
-#     rdlc = RDLCompiler()
-#
-#     Register all UDPs that 'regblock' requires
-#     for udp in ALL_UDPS:
-#       rdlc.register_udp(udp)
+
+"""Generate SystemVerilog register blocks and UVM RAL models from a SystemRDL source file.
+
+For each RDL file this script produces:
+  - ``{addrmap_name}.sv``       — synthesisable register block (via peakrdl-regblock)
+  - ``{addrmap_name}_pkg.sv``   — SV package with register types and an address-width localparam
+  - ``{rdl_file_stem}_uvm.sv``  — UVM RAL model (via peakrdl-uvm)
+
+RTL outputs ({addrmap_name}.sv, {addrmap_name}_pkg.sv) are written to ``--rtl-output``
+(default: same directory as the RDL file).  The UVM RAL model ({rdl_file_stem}_uvm.sv)
+is written to ``--dv-output`` (default: same directory as the RDL file).
+``$CALIPTRA_ROOT`` must be set; it is used to locate ``src/keyvault/data/kv_def.rdl`` and the UVM Jinja2 templates.
+
+Usage::
+
+    python reg_gen.py <path/to/foo_reg.rdl> [--rtl-output DIR] [--dv-output DIR]
+                      [--param NAME=VALUE ...] [--cov]
+
+The ``--cov`` flag additionally emits ``{rdl_file_stem}_covergroups.svh`` and
+``{rdl_file_stem}_sample.svh`` to ``--dv-output`` as hand-edit starting points for
+functional coverage.
+"""
 
 from systemrdl import RDLCompiler, RDLCompileError, RDLWalker
 from systemrdl import RDLListener, rdltypes
-from systemrdl.node import FieldNode
+from systemrdl.node import FieldNode, AddrmapNode, RootNode
 from peakrdl_regblock import RegblockExporter
 from peakrdl_uvm import UVMExporter
 from peakrdl_html import HTMLExporter
 from peakrdl_regblock.udps import ALL_UDPS
 from peakrdl_regblock.cpuif.passthrough import PassthroughCpuif
 from math import log, ceil, floor
+from pathlib import Path
+from typing import Union
 import sys
 import os
 import re
 import rdl_post_process
+import inject_hwif_assertion
 import argparse
 
-# Parse command line arguments
-parser = argparse.ArgumentParser(description='Generate SystemVerilog registers from RDL files')
-parser.add_argument('rdl_file', help='RDL input file')
-parser.add_argument('--cov', action='store_true', help='Generate coverage files')
-parser.add_argument('--param', '-p', action='append', default=[], 
-                    help='Set RDL parameter (format: NAME=VALUE). Can be used multiple times.')
-args = parser.parse_args()
 
-# Process arguments
-rdl_file = args.rdl_file
-build_cov = args.cov
-
-#output directory for dumping files
-rtl_output_dir = os.path.abspath(os.path.dirname(rdl_file))
-repo_root = os.environ.get('CALIPTRA_ROOT')
-
-# Listener to retrieve the address width at the CPU IF and write as a param to the pkg
 class SVPkgAppendingListener(RDLListener):
+    """RDL walker listener that appends an address-width localparam to a
+    generated register package.
 
-    def __init__(self, file_path):
+    ``RegblockExporter`` emits ``{addrmap_name}_pkg.sv`` but does not
+    include the total address-map size as a parameter.  This listener
+    walks the elaborated model and rewrites that file in-place, inserting:
+
+        localparam {ADDRMAP_NAME}_ADDR_WIDTH = 32'd<N>;
+
+    where ``<N>`` is ``floor(log2(addrmap.total_size)) + 1``.
+
+    The listener assumes ``RegblockExporter`` has already written
+    ``{addrmap_name}_pkg.sv`` into *file_path* before the walk begins.
+    """
+
+    def __init__(self, file_path: Path) -> None:
+        """
+        Args:
+            file_path: Directory containing the previously generated
+                ``*_pkg.sv`` file, and into which the rewritten file
+                will be saved.
+        """
         self.file_path = file_path
         self.orig_file = ""
 
-    def enter_Addrmap(self,node):
-        self.regfile_name = os.path.join(self.file_path, node.inst_name)
-        pkg_file_path = str(self.regfile_name + "_pkg.sv")
+    def enter_Addrmap(self, node: AddrmapNode) -> None:
+        """Read the existing pkg file, strip the closing ``endpackage``,
+        and rewrite it with the address-width localparam appended.
+
+        The file handle is left open for :meth:`exit_Addrmap` to close
+        after writing the ``endpackage`` terminator.
+        """
+        # Only the top-level addrmap gets `{name}_pkg.sv` and `{name}.sv` emitted by
+        # peakrdl-regblock; nested sub-addrmaps don't (peakrdl-regblock either inlines them or,
+        # if marked `external`, skips them entirely with the RTL provided externally). Identify
+        # the top by parent type — `node.external` is True for the top-level too, so we can't
+        # use that.
+        # Only touch ``self.file`` for the top-level addrmap.  Nested addrmaps (e.g. an
+        # ``external`` sub-addrmap) re-enter this listener; without this guard they would
+        # overwrite ``self.file`` to ``None`` and ``exit_Addrmap`` of the top-level would
+        # then skip writing the closing ``endpackage`` terminator.
+        if not isinstance(node.parent, RootNode):
+            return
+        self.regfile_name = self.file_path / node.inst_name
+        pkg_file_path = self.file_path / f"{node.inst_name}_pkg.sv"
         self.file = open(pkg_file_path, 'r')
         for line in self.file.readlines():
             if (re.search(r'\bendpackage\b', line) is None):
@@ -78,54 +108,152 @@ class SVPkgAppendingListener(RDLListener):
         self.file.write(self.orig_file)
         self.file.write("\n    localparam " + node.inst_name.upper() + "_ADDR_WIDTH = " + "32'd" + str(int(floor(log(node.total_size, 2)) + 1)) + ";")
 
-    def exit_Addrmap(self, node):
+    def exit_Addrmap(self, node: AddrmapNode) -> None:
+        """Write the closing ``endpackage`` keyword and close the file."""
+        # Mirror the guard in ``enter_Addrmap``: only the top-level addrmap owns ``self.file``.
+        if not isinstance(node.parent, RootNode):
+            return
         self.file.write("\n\nendpackage")
         self.file.close()
 
-    def get_regfile_name(self):
+    def get_regfile_name(self) -> Path:
+        """Return the stem path of the generated register file.
+
+        Returns:
+            Path of the form ``{file_path}/{addrmap_inst_name}`` with no
+            extension.  Append ``.sv`` or ``_pkg.sv`` to obtain the
+            actual output file paths.
+        """
         return self.regfile_name
 
-# Create an instance of the compiler
-rdlc = RDLCompiler()
 
-# Register all UDPs that 'regblock' requires
-for udp in ALL_UDPS:
-    rdlc.register_udp(udp)
+def parse_params(param_args: list[str]) -> dict[str, Union[bool, int]]:
+    """Parse ``NAME=VALUE`` strings into a typed dictionary.
 
-try:
-    if not repo_root:
-      print("CALIPTRA_ROOT environment variable is not defined.")
-    # Compile your RDL files
-    #compile the kv defines so that rdl files including kv controls have the definition
-    rdlc.compile_file(os.path.join(repo_root, "src/keyvault/rtl/kv_def.rdl")) 
-    rdlc.compile_file(rdl_file)
+    Supports three value types, tested in order:
 
-    # Build parameters dictionary from command line arguments
-    parameters = {}
-    for param in args.param:
+    - **Boolean**: ``'true'`` or ``'false'`` (case-insensitive) → ``bool``
+    - **Hexadecimal**: ``'0x'``-prefixed strings → ``int``
+    - **Decimal integer**: digit strings, optionally negative → ``int``
+
+    Values that do not match any of the above patterns are silently
+    ignored and excluded from the returned dictionary.
+
+    Args:
+        param_args: List of ``'NAME=VALUE'`` strings, typically from
+            argparse with ``action='append'``.
+
+    Returns:
+        Dictionary mapping parameter names to their typed values.
+        Exits with code 1 if a string lacks ``'='`` or contains an
+        invalid hex literal.
+    """
+    parameters: dict[str, Union[bool, int]] = {}
+    for param in param_args:
         if '=' not in param:
             print(f"Error: Invalid parameter format '{param}'. Use NAME=VALUE")
             sys.exit(1)
         name, value = param.split('=', 1)
-        
-        # Handle boolean values - only accept 'true' or 'false'
+
         if value.lower() in ['true', 'false']:
             parameters[name] = value.lower() == 'true'
-        # Handle hex values
         elif value.startswith('0x'):
             try:
                 parameters[name] = int(value, 16)
             except ValueError:
                 print(f"Error: Invalid hex value '{value}'")
                 sys.exit(1)
-        # Handle integer values
         elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
             parameters[name] = int(value)
 
-    # Elaborate the design with parameters
-    root = rdlc.elaborate(parameters=parameters if parameters else None)
+    return parameters
 
-    # Export a SystemVerilog implementation
+
+def compile_and_elaborate(
+    rdlc: RDLCompiler,
+    repo_root: Path,
+    rdl_file: Path,
+    parameters: dict[str, Union[bool, int]],
+) -> RootNode:
+    """Compile SystemRDL sources and return the elaborated root node.
+
+    Always compiles ``src/keyvault/data/kv_def.rdl`` from *repo_root*
+    before the target file, so that any RDL using key-vault controls
+    has the required type definitions in scope.  This dependency is
+    unconditional: every register block is compiled against
+    ``kv_def.rdl`` regardless of whether it references key-vault types.
+
+    Args:
+        rdlc: A configured ``RDLCompiler`` instance with all required
+            UDPs already registered.
+        repo_root: Absolute path to the Caliptra repository root
+            (value of ``$CALIPTRA_ROOT``).
+        rdl_file: Path to the target ``.rdl`` file to compile.
+        parameters: Elaboration-time parameter overrides as produced
+            by :func:`parse_params`.  Pass an empty dict for defaults.
+
+    Returns:
+        Elaborated root node of the register model.
+        Exits with code 1 on any ``RDLCompileError``.
+    """
+    # Both compile_file and elaborate can raise RDLCompileError (syntax errors and semantic violations respectively).
+    try:
+        rdlc.compile_file(repo_root / "src/keyvault/data/kv_def.rdl")
+        rdlc.compile_file(rdl_file)
+        return rdlc.elaborate(parameters=parameters if parameters else None)
+    except RDLCompileError:
+        sys.exit(1)
+
+
+def export(
+    root: RootNode,
+    repo_root: Path,
+    rdl_file: Path,
+    rtl_output_dir: Path,
+    dv_output_dir: Path,
+    build_cov: bool,
+) -> None:
+    """Export all generated artefacts from an elaborated register model.
+
+    **RTL (always)**
+        ``RegblockExporter`` writes ``{addrmap_name}.sv`` and
+        ``{addrmap_name}_pkg.sv`` to *rtl_output_dir*, where *addrmap_name*
+        is the elaborated addrmap's ``inst_name`` — not necessarily the stem
+        of *rdl_file*.  Both files are then modified in-place by
+        :func:`rdl_post_process.scrub_line_by_line` to convert unpacked
+        arrays and structs to packed equivalents required by Verilator,
+        and the ``.sv`` file additionally has a ``CALIPTRA_ASSERT_KNOWN``
+        X-check on ``hwif_in`` injected by
+        :class:`inject_hwif_assertion.HwifAssertionListener` during the
+        same RDL walker pass that drives :class:`SVPkgAppendingListener`.
+
+    **UVM RAL model (always)**
+        ``{rdl_file.stem}_uvm.sv`` is written to *dv_output_dir* using the
+        Jinja2 templates at ``repo_root/tools/templates/rdl/uvm``.
+
+    **Coverage scaffolding (only when build_cov is True)**
+        ``{rdl_file.stem}_covergroups.svh`` and
+        ``{rdl_file.stem}_sample.svh`` are generated to *dv_output_dir* from
+        templates at ``repo_root/tools/templates/rdl/cov`` and
+        ``repo_root/tools/templates/rdl/smp`` respectively.  These files are
+        *starting points* that must be hand-edited after generation; they are
+        not produced in the normal CI flow.
+
+    Args:
+        root: Elaborated root node as returned by
+            :func:`compile_and_elaborate`.
+        repo_root: Absolute path to the Caliptra repository root,
+            used to locate the UVM and coverage Jinja2 templates.
+        rdl_file: Path to the source ``.rdl`` file; its stem names the
+            UVM and coverage output files.
+        rtl_output_dir: Directory for synthesisable RTL outputs
+            ({addrmap_name}.sv and {addrmap_name}_pkg.sv).
+        dv_output_dir: Directory for DV outputs ({stem}_uvm.sv and,
+            when --cov is given, the coverage scaffolding files).
+        build_cov: When ``True``, also emit the coverage scaffolding
+            files.
+    """
+    # Emit synthesisable register block RTL
     exporter = RegblockExporter()
     exporter.export(
         root, rtl_output_dir,
@@ -133,29 +261,80 @@ try:
         retime_read_response=False
     )
 
-    # Export a UVM register model
-    exporter = UVMExporter(user_template_dir=os.path.join(repo_root, "tools/templates/rdl/uvm"))
-    exporter.export(root, os.path.join(rtl_output_dir, os.path.splitext(os.path.basename(rdl_file))[0]) + "_uvm.sv")
-    # The below lines are used to generate a baseline/starting point for the include files "<reg_name>_covergroups.svh" and "<reg_name>_sample.svh"
-    # The generated files will need to be hand-edited to provide the desired functionality.
-    # Run this script directly on the target RDL file, with the second argument "--cov" to generate the files.
-    if build_cov == 1:
-        exporter = UVMExporter(user_template_dir=os.path.join(repo_root, "tools/templates/rdl/cov"))
-        exporter.export(root, os.path.join(rtl_output_dir, os.path.splitext(os.path.basename(rdl_file))[0]) + "_covergroups.svh")
-        exporter = UVMExporter(user_template_dir=os.path.join(repo_root, "tools/templates/rdl/smp"))
-        exporter.export(root, os.path.join(rtl_output_dir, os.path.splitext(os.path.basename(rdl_file))[0]) + "_sample.svh")
+    # Emit UVM RAL model
+    uvm_out = dv_output_dir / f"{rdl_file.stem}_uvm.sv"
+    exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/uvm")
+    exporter.export(root, str(uvm_out), use_uvm_factory=True)
+    rdl_post_process.strip_trailing_whitespace(uvm_out)
 
-    # Traverse the register model!
+    if build_cov:
+        exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/cov")
+        exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_covergroups.svh"))
+        exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/smp")
+        exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_sample.svh"))
+
+    # Traverse the register model with two listeners:
+    #   * SVPkgAppendingListener — append the address-width localparam to the pkg
+    #   * HwifAssertionListener  — inject CALIPTRA_ASSERT_KNOWN(hwif_in) into the module
     walker = RDLWalker(unroll=True)
     pkglistener = SVPkgAppendingListener(rtl_output_dir)
-    walker.walk(root, pkglistener)
+    hwif_listener = inject_hwif_assertion.HwifAssertionListener(rtl_output_dir)
+    walker.walk(root, pkglistener, hwif_listener)
 
-    # Scrub the output SystemVerilog files to modify the coding style
-    #  - Change unpacked arrays to packed, unpacked structs to packed
-    # TODO just make a new exporter template instead of scrubbing?
-    rdl_post_process.scrub_line_by_line(str(pkglistener.get_regfile_name() + ".sv"))
-    rdl_post_process.scrub_line_by_line(str(pkglistener.get_regfile_name() + "_pkg.sv"))
+    # Post-process RTL:
+    #   1. rdl_post_process — fixes for peakrdl-regblock quirks (unpacked
+    #      structs/arrays etc.) needed for Verilator/xmvlog/lint compatibility.
+    #   2. strip_trailing_whitespace — defence-in-depth cleanup of
+    #      trailing whitespace emitted by upstream Jinja rendering.
+    # TODO: replace (1) with a custom exporter template to avoid the scrub step.
+    regfile_name = pkglistener.get_regfile_name()
+    rtl_sv = regfile_name.with_suffix('.sv')
+    rtl_pkg = regfile_name.with_name(regfile_name.name + '_pkg.sv')
+    rdl_post_process.scrub_line_by_line(rtl_sv)
+    rdl_post_process.scrub_line_by_line(rtl_pkg)
+    rdl_post_process.strip_trailing_whitespace(rtl_sv)
+    rdl_post_process.strip_trailing_whitespace(rtl_pkg)
 
-except RDLCompileError:
-    # A compilation error occurred. Exit with error code
-    sys.exit(1)
+
+def main() -> None:
+    """Parse arguments, compile/elaborate the RDL sources, and export all artefacts."""
+    parser = argparse.ArgumentParser(description='Generate SystemVerilog registers from RDL files')
+    parser.add_argument('rdl_file', help='RDL input file')
+    parser.add_argument('--cov', action='store_true', help='Generate coverage files')
+    parser.add_argument('--param', '-p', action='append', default=[],
+                        help='Set RDL parameter (format: NAME=VALUE). Can be used multiple times.')
+    parser.add_argument('--rtl-output', default=None,
+                        help='Output directory for synthesisable RTL files '
+                             '({addrmap}.sv, {addrmap}_pkg.sv). '
+                             'Defaults to the directory containing the RDL file.')
+    parser.add_argument('--dv-output', default=None,
+                        help='Output directory for DV files ({stem}_uvm.sv and coverage '
+                             'scaffolding). Defaults to the directory containing the RDL file.')
+    args = parser.parse_args()
+
+    rdl_file = Path(args.rdl_file)
+    default_output_dir = rdl_file.resolve().parent
+    rtl_output_dir = Path(args.rtl_output) if args.rtl_output else default_output_dir
+    dv_output_dir = Path(args.dv_output) if args.dv_output else default_output_dir
+
+    rtl_output_dir.mkdir(parents=True, exist_ok=True)
+    dv_output_dir.mkdir(parents=True, exist_ok=True)
+
+    _repo_root_str = os.environ.get('CALIPTRA_ROOT')
+    if not _repo_root_str:
+        print("CALIPTRA_ROOT environment variable is not defined.")
+        sys.exit(1)
+    repo_root = Path(_repo_root_str)
+
+    parameters = parse_params(args.param)
+
+    rdlc = RDLCompiler()
+    for udp in ALL_UDPS:
+        rdlc.register_udp(udp)
+
+    root = compile_and_elaborate(rdlc, repo_root, rdl_file, parameters)
+    export(root, repo_root, rdl_file, rtl_output_dir, dv_output_dir, args.cov)
+
+
+if __name__ == '__main__':
+    main()

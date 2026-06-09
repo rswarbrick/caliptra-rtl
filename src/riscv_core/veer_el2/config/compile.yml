@@ -1,4 +1,9 @@
 ---
+# VeeR EL2 shared definitions: el2_def (the actual SV package), the
+# common_defines `defines` file, and the `beh_lib` behavioural library.
+# Required by every consumer of VeeR EL2. NOTE: the provider name suffix
+# `_pkg` doesn't correspond to an `el2_veer_pkg` SV package — the real
+# package symbol is `el2_pkg`, declared in el2_def.sv.
 provides: [el2_veer_pkg]
 schema_version: 2.4.0
 targets:
@@ -16,6 +21,11 @@ targets:
       - $COMPILE_ROOT/rtl/include/el2_def.sv
       - $COMPILE_ROOT/rtl/common_defines.sv
 ---
+# Full VeeR EL2 RISC-V core RTL: debug, decode (incl. PMP/trigger), DMI/JTAG
+# bridge, EXU (ALU/MUL/DIV), IFU (BP, compress, ICCM/IC mem, mem ctl, aln),
+# LSU (bus/buffer, DCCM, ECC, stbuf, trigger), AHB↔AXI4 bridges, memory,
+# PIC, DMA, PMP, and the el2_veer_wrapper top. The Caliptra-internal core
+# that executes ROM/runtime firmware.
 provides: [el2_veer_wrapper]
 schema_version: 2.4.0
 requires: [el2_veer_pkg]
@@ -81,15 +91,17 @@ global:
         - '-assert svaext'
         #- '-v2k_generate'
 ---
-provides: [el2_veer_wrapper_tb]  
+# Standalone testbench top for the VeeR EL2 wrapper. Brings in the IFU
+# memory-read helper and an AHB slave behavioural shim.
+provides: [el2_veer_wrapper_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - caliptra_top_defines
   - el2_veer_pkg
   - el2_veer_wrapper
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/rtl/ifu/el2_ifu_tb_memread.sv

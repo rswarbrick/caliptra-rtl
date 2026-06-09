@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 {
   flow:             sim
-  // Where to find DV code
-  dv_root:          "{proj_root}/tools/dvsim"
   flow_makefile:    "{dv_root}/sim.mk"
 
+  // Where to find common DV code
+  dv_root:          "{proj_root}/tools/dvsim"
   import_cfgs:      ["{dv_root}/common_project_cfg.hjson",
                      "{dv_root}/common_modes.hjson",
                      "{dv_root}/fusesoc.hjson",
@@ -18,7 +18,6 @@
   build_dir:          "{scratch_path}/{build_mode}"
   run_dir_name:       "{index}.{test}"
   run_dir:            "{scratch_path}/{run_dir_name}/latest"
-  sw_root_dir:        ""
 
   // Default file to store build_seed value
   build_seed_file_path: "{build_dir}/build_seed.log"
@@ -68,6 +67,8 @@
   run_opts: ["+UVM_NO_RELNOTES",
              "+UVM_VERBOSITY={expand_uvm_verbosity_{verbosity}}"]
 
+  sw_build_cmd: []
+
   // Default list of things to export to shell
   exports: [
     { dv_root: "{dv_root}" },
@@ -80,10 +81,6 @@
     { TB_TOP: "{tb}" },
     { dut_instance: "{dut_instance}" }
   ]
-
-  // This is a placeholder for a variable that dvsim expects will exist. In OpenTitan, it points at
-  // a Python script that builds SW collateral for a simulation.
-  sw_build_cmd: ["true"]
 
   // Build modes are collection of build_opts and run_opts
   //
@@ -118,9 +115,10 @@
       name: smoke
       tests: []
       reseed: 1
-      run_opts: [// Knob used to configure an existing test / vseq to have a shorter runtime.
-                 "+smoke_test=1"
-                ]
+      run_opts: [
+        // Knob used to configure an existing test / vseq to have a shorter runtime.
+        "+smoke_test=1"
+      ]
     }
     {
       name: all

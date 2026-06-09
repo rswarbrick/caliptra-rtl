@@ -1,4 +1,8 @@
 ---
+# UVMF-generated VIP for soc_ifc: interface packages (soc_ifc_ctrl,
+# cptra_ctrl, ss_mode_ctrl, soc_ifc_status, cptra_status, ss_mode_status,
+# mbox_sram) plus the soc_ifc env pkg and its reg-model top. Split out from
+# uvmf_soc_ifc so the VIP can be reused independently of the project bench.
 provides: [uvmf_soc_ifc_vip]
 schema_version: 2.4.0
 requires:
@@ -64,6 +68,10 @@ targets:
       - ${COMPILE_ROOT}/uvmf_template_output/verification_ip/environment_packages/soc_ifc_env_pkg/registers/soc_ifc_reg_model_top_pkg.sv
       - ${COMPILE_ROOT}/uvmf_template_output/verification_ip/environment_packages/soc_ifc_env_pkg/soc_ifc_env_pkg.sv
 ---
+# UVMF-generated soc_ifc project bench: parameters / sequences / tests
+# packages plus the hdl_top and hvl_top tops, layered on uvmf_soc_ifc_vip.
+# Drives the Avery AXI VIP into the SoC interface; pre_exec stages NIST
+# SHA*.rsp vectors for self-checking SHA-512 accelerator tests.
 provides: [uvmf_soc_ifc]
 schema_version: 2.4.0
 requires:

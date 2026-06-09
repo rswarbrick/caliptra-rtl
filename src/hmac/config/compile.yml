@@ -1,4 +1,7 @@
 ---
+# HMAC controller RTL: hmac_param_pkg, generated register file, control FSM,
+# HMAC top, and HMAC core. Wraps the masked SHA-512 core (sha512_masked_core)
+# to compute HMAC-SHA-512 / HMAC-SHA-384.
 provides: [hmac_ctrl]
 schema_version: 2.4.0
 requires:
@@ -10,26 +13,27 @@ targets:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/hmac_param_pkg.sv
-      - $COMPILE_ROOT/rtl/hmac_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/hmac_reg_pkg.sv
       - $COMPILE_ROOT/rtl/hmac_ctrl.sv
       - $COMPILE_ROOT/rtl/hmac.sv
       - $COMPILE_ROOT/rtl/hmac_core.sv
-      - $COMPILE_ROOT/rtl/hmac_reg.sv
+      - $COMPILE_ROOT/rtl/generated/hmac_reg.sv
     tops: [hmac_ctrl]
   rtl_lint:
     directories: []
-    waiver_files: 
+    waiver_files:
       - $MSFT_REPO_ROOT/src/hmac/config/design_lint/hmac_ctrl/sglint_waivers
 ---
-provides: [hmac_ctrl_tb]  
+# Standalone testbench top for the HMAC controller.
+provides: [hmac_ctrl_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - hmac_ctrl
   - hmac_coverage
   - caliptra_top_reg_defines
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/rtl/hmac_param_pkg.sv
@@ -44,13 +48,15 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [hmac_coverage]  
+# Functional-coverage collateral bound onto the HMAC controller: cover
+# interface and bind module. Testbench-only.
+provides: [hmac_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - hmac_ctrl
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/hmac_ctrl_cov_if.sv

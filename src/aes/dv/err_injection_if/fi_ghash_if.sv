@@ -63,8 +63,8 @@ interface fi_ghash_if
     bit [31:0] read;
     bit [31:0] mask = '0;
     $assertoff(0, "tb.dut");
-    $asserton(1, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(1, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(1, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(1, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
 
     // Some signals only exist for the masked implementation. Skip those when testing the unmasked
     // implementation.

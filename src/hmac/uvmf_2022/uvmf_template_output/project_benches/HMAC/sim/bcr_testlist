@@ -1,6 +1,3 @@
-
-
-
 # Test list for use by RMDB file
 # File syntax is
 # TB_INFO <tb_name> { <special args for build command> } { <special args for run command > }

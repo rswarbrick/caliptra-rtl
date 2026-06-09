@@ -1,4 +1,7 @@
 ---
+# Entropy source SV packages: state-machine packages (main_sm_pkg, ack_sm_pkg),
+# generated reg pkg, and the top entropy_src_pkg. Imported by entropy_src RTL
+# and any block that consumes raw-entropy types.
 provides: [entropy_src_pkg]
 schema_version: 2.4.0
 targets:
@@ -17,6 +20,10 @@ targets:
       - $COMPILE_ROOT/rtl/entropy_src_reg_pkg.sv
       - $COMPILE_ROOT/rtl/entropy_src_pkg.sv
 ---
+# OpenTitan entropy source RTL: register top, health-test modules (bucket,
+# Markov, repcnt[s], adaptive proportion), watermark/counter registers,
+# main/ack FSMs, core, and entropy_src top. Provides the raw entropy stream
+# that csrng conditions into a CSPRNG.
 provides: [entropy_src]
 schema_version: 2.4.0
 requires:
@@ -49,6 +56,8 @@ targets:
       - $MSFT_REPO_ROOT/src/entropy_src/config/design_lint/sglint_waivers
     tops: [entropy_src]
 ---
+# Behavioural physical-RNG model used by entropy_src testbenches in lieu of a
+# real noise source.
 provides: [physical_rng]
 schema_version: 2.4.0
 targets:
@@ -57,6 +66,7 @@ targets:
     files:
       - $COMPILE_ROOT/tb/physical_rng.sv
 ---
+# Standalone testbench top: entropy_src DUT against the physical_rng model.
 provides: [entropy_src_tb]
 schema_version: 2.4.0
 requires:

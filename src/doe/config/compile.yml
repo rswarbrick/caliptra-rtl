@@ -1,4 +1,6 @@
 ---
+# SV package of DOE (Deobfuscation Engine) shared types/parameters. Imported
+# by DOE RTL, coverage, and any IP that interacts with the DOE.
 provides: [doe_defines_pkg]
 schema_version: 2.4.0
 requires:
@@ -6,13 +8,15 @@ requires:
 targets:
   tb:
     directories: [$COMPILE_ROOT/rtl]
-    files: 
+    files:
       - $COMPILE_ROOT/rtl/doe_defines_pkg.sv
   rtl:
     directories: [$COMPILE_ROOT/rtl]
-    files: 
+    files:
       - $COMPILE_ROOT/rtl/doe_defines_pkg.sv
 ---
+# Functional-coverage collateral bound onto the DOE: cover interface and
+# bind module. Testbench-only.
 provides: [doe_coverage]
 schema_version: 2.4.0
 requires:
@@ -20,12 +24,15 @@ requires:
   - doe_defines_pkg
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/doe_cov_if.sv
       - $COMPILE_ROOT/coverage/doe_cov_bind.sv
 ---
+# DOE controller RTL: generated register file, AES core (sboxes,
+# encipher/decipher blocks, CBC core), key memory, and FSM. The DOE
+# deobfuscates fuse-stored secrets using a hardware-internal key on boot.
 provides: [doe_ctrl]
 schema_version: 2.4.0
 requires:
@@ -37,7 +44,7 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/doe_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/doe_reg_pkg.sv
       - $COMPILE_ROOT/rtl/doe_ctrl.sv
       - $COMPILE_ROOT/rtl/doe_decipher_block.sv
       - $COMPILE_ROOT/rtl/doe_encipher_block.sv
@@ -46,7 +53,7 @@ targets:
       - $COMPILE_ROOT/rtl/doe_sbox.sv
       - $COMPILE_ROOT/rtl/doe_cbc.sv
       - $COMPILE_ROOT/rtl/doe_core_cbc.sv
-      - $COMPILE_ROOT/rtl/doe_reg.sv
+      - $COMPILE_ROOT/rtl/generated/doe_reg.sv
       - $COMPILE_ROOT/rtl/doe_fsm.sv
     tops: [doe_ctrl]
   rtl_lint:
@@ -54,29 +61,33 @@ targets:
     waiver_files:
       - $MSFT_REPO_ROOT/src/doe/config/design_lint/doe_ctrl/sglint_waivers
 ---
-provides: [doe_cbc_tb]  
+# Standalone testbench top for the DOE CBC datapath (full doe_ctrl + CBC
+# wrapper). Drives directed/random AES-CBC vectors.
+provides: [doe_cbc_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - doe_ctrl
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/doe_cbc_tb.sv
     tops: [doe_cbc_tb]
 ---
-provides: [doe_core_cbc_tb]  
+# Standalone testbench top targeting just the DOE AES-CBC core (no register
+# interface), used for lower-level core verification.
+provides: [doe_core_cbc_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - doe_ctrl
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/doe_core_cbc_tb.sv
-    tops: [doe_core_cbc_tb]    
+    tops: [doe_core_cbc_tb]
 global:
   tool:
     vcs:

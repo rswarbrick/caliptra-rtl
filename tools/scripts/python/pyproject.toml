@@ -1,0 +1,29 @@
+# Copyright lowRISC Contributors.
+# Licensed under the MIT License, see LICENSE for details.
+# SPDX-License-Identifier: MIT
+
+[project]
+name = "caliptra-reg-gen"
+version = "0.0.0"
+description = "Register generation tooling for caliptra-rtl"
+requires-python = ">=3.13, <3.14"
+
+dependencies = [
+  # SystemRDL compiler (version ceiling enforced by peakrdl-regblock)
+  "systemrdl-compiler",
+
+  # PeakRDL CLI umbrella (provides the `peakrdl` command)
+  "peakrdl",
+
+  # PeakRDL exporters
+  "peakrdl-regblock",
+  "peakrdl-uvm",
+  "peakrdl-html",
+]
+
+[tool.uv]
+# This is not a distributable package — pyproject.toml is used only for dependency management.
+package = false
+
+[tool.setuptools]
+py-modules = []

@@ -2,14 +2,14 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
+class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_clp_reg));
 
   `uvm_object_utils_begin(aes_env_cfg)
   `uvm_object_utils_end
   `uvm_object_new
 
-  virtual pins_if #($bits(lc_ctrl_pkg::lc_tx_t) + 1) lc_escalate_vif;
   virtual pins_if #(1) idle_vif;
+  virtual ahb_if ahb_vif;
   virtual aes_reseed_if aes_reseed_vif;
   virtual aes_masking_reseed_if aes_masking_reseed_vif;
   virtual force_if#(.Signal("aes_ctrl_cs"),
@@ -28,7 +28,8 @@ class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
   virtual fi_ghash_if aes_ghash_fi_vif;
   virtual fi_core_if aes_core_fi_vif;
 
-  rand key_sideload_agent_cfg keymgr_sideload_agent_cfg;
+  ahb_agent_cfg m_ahb_agent_cfg;
+
   // test environment constraints //
   typedef enum { VerySlow, Slow, Fast, VeryFast } tl_ul_access_e;
   //  Message Knobs //
@@ -196,25 +197,25 @@ class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
     `uvm_info(`gfn, $sformatf("Use KEY MAST: %b", use_key_mask), UVM_LOW)
     if (use_key_mask) key_mask = 1;
 
-    case(host_resp_speed)
-      VerySlow: begin
-        m_tl_agent_cfg.d_ready_delay_min = 10;
-        m_tl_agent_cfg.d_ready_delay_max = 10;
-      end
-      Slow: begin
-        m_tl_agent_cfg.d_ready_delay_min = 4;
-        m_tl_agent_cfg.d_ready_delay_max = 10;
-      end
-      Fast: begin
-        m_tl_agent_cfg.d_ready_delay_min = 0;
-        m_tl_agent_cfg.d_ready_delay_max = 5;
-      end
-      VeryFast: begin
-        m_tl_agent_cfg.d_ready_delay_min = 0;
-        m_tl_agent_cfg.d_ready_delay_max = 0;
-        zero_delays                      = 1;
-      end
-    endcase
+    // case(host_resp_speed)
+    //   VerySlow: begin
+    //     m_tl_agent_cfg.d_ready_delay_min = 10;
+    //     m_tl_agent_cfg.d_ready_delay_max = 10;
+    //   end
+    //   Slow: begin
+    //     m_tl_agent_cfg.d_ready_delay_min = 4;
+    //     m_tl_agent_cfg.d_ready_delay_max = 10;
+    //   end
+    //   Fast: begin
+    //     m_tl_agent_cfg.d_ready_delay_min = 0;
+    //     m_tl_agent_cfg.d_ready_delay_max = 5;
+    //   end
+    //   VeryFast: begin
+    //     m_tl_agent_cfg.d_ready_delay_min = 0;
+    //     m_tl_agent_cfg.d_ready_delay_max = 0;
+    //     zero_delays                      = 1;
+    //   end
+    // endcase
   endfunction
 
 
@@ -244,20 +245,7 @@ class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
     return str;
   endfunction
 
-  virtual function void initialize(bit inherit_ral_models = 1'b0);
-    list_of_alerts = aes_env_pkg::LIST_OF_ALERTS;
-    keymgr_sideload_agent_cfg = key_sideload_agent_cfg#(keymgr_pkg::hw_key_req_t)::type_id
-                                ::create("keymgr_sideload_agent_cfg");
-    keymgr_sideload_agent_cfg.start_default_seq = 0;
-    num_edn = 1;
-    super.initialize(inherit_ral_models);
-
-    can_reset_with_csr_accesses = 1;
-
-    tl_intg_alert_fields[ral.status.alert_fatal_fault] = 1;
-    shadow_update_err_status_fields[ral.status.alert_recov_ctrl_update_err] = 1;
-    shadow_storage_err_status_fields[ral.status.alert_fatal_fault] = 1;
-
+  function void get_config_db_handles();
     // get aes reseed check interface handle
     if (!uvm_config_db#(virtual aes_reseed_if)::get(null, "*.env" , "aes_reseed_vif",
                                                     aes_reseed_vif)) begin
@@ -269,6 +257,15 @@ class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
         `uvm_fatal(`gfn, $sformatf("FAILED TO GET HANDLE TO AES MASKING RESEED IF"))
       end
     end
+
+    if (!uvm_config_db#(virtual pins_if #(1))::get(null, "*.env", "idle_vif", idle_vif)) begin
+      `uvm_fatal(`gfn, "Failed to get idle_vif from uvm_config_db")
+    end
+
+    if (!uvm_config_db#(virtual ahb_if)::get(null, "*.env", "ahb_vif", ahb_vif)) begin
+      `uvm_fatal(`gfn, "Failed to get ahb_vif from uvm_config_db")
+    end
+
     foreach (aes_fi_vif[nn]) begin
       if (!uvm_config_db#(virtual force_if#(.Signal("aes_ctrl_cs"),
                                             .SignalWidth(aes_env_pkg::StateWidth))
@@ -324,8 +321,29 @@ class aes_env_cfg extends cip_base_env_cfg #(.RAL_T(aes_reg_block_extended));
                          aes_core_fi_vif)) begin
       `uvm_fatal(`gfn, "FAILED TO GET HANDLE TO CORE FAULT INJECTION INTERFACE")
     end
+  endfunction: get_config_db_handles
 
-    // only support 1 outstanding TL item
-    m_tl_agent_cfg.max_outstanding_req = 1;
+  virtual function void initialize();
+    // dv_base_env_cfg requires ral_type_name to be set explicitly before initialize_ral (see the
+    // comment on dv_base_env_cfg::ral_type_name). Provide the PeakRDL-uvm class name.
+    ral_type_name = "aes_clp_reg";
+
+    // Initialize the register models themselves. This uses initialize_ral, which is implemented in
+    // dv_base_env_cfg.
+    initialize_ral(`UVM_REG_ADDR_WIDTH,
+                   `UVM_REG_DATA_WIDTH,
+                   `UVM_REG_BYTENABLE_WIDTH);
+
+    // Create the AHB agent cfg object.
+    m_ahb_agent_cfg = ahb_agent_cfg::type_id::create({"m_ahb_agent_cfg_", ral_type_name});
+    // m_ahb_agent_cfg.is_active = is_active;
+    // m_ahb_agent_cfg.if_mode = (is_active ? dv_utils_pkg::Host : dv_utils_pkg::Monitor);
+
+    get_config_db_handles();
+
+    // Hand the AHB interface handle to the agent cfg so the agent can drive it.
+    // TODO(caliptra-port): adjust to whatever field name ahb_agent_cfg exposes for its vif.
+    m_ahb_agent_cfg.vif = ahb_vif;
   endfunction
+
 endclass

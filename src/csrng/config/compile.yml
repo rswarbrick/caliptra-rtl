@@ -1,4 +1,7 @@
 ---
+# CSRNG shared SV packages (reg pkg + csrng_pkg types). Imported by csrng
+# RTL, by EDN (csrng's downstream consumer), and by any block that needs
+# CSRNG command/state types.
 provides: [csrng_pkg]
 schema_version: 2.4.0
 requires:
@@ -15,6 +18,9 @@ targets:
       - $COMPILE_ROOT/rtl/csrng_reg_pkg.sv
       - $COMPILE_ROOT/rtl/csrng_pkg.sv
 ---
+# CSRNG controller RTL (CTR_DRBG): core, command stage, state DB, block
+# encrypt, generate/update/cmd DRBG stages, register top, and the csrng top
+# module. Sources entropy from entropy_src and serves CSPRNG draws to EDN.
 provides: [csrng]
 schema_version: 2.4.0
 requires:
@@ -47,6 +53,7 @@ targets:
       - $MSFT_REPO_ROOT/src/csrng/config/design_lint/csrng/sglint_waivers
     tops: [csrng]
 ---
+# Standalone testbench top for csrng.
 provides: [csrng_tb]
 schema_version: 2.4.0
 requires:

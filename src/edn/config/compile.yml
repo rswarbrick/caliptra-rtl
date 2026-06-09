@@ -1,4 +1,7 @@
 ---
+# SV package of OpenTitan EDN (Entropy Distribution Network) types. Used by
+# every block that requests CSRNG-derived entropy via EDN req/ack handshakes.
+# No EDN RTL is built in this tree — only the shared types are needed.
 provides: [edn_pkg]
 requires:
   - entropy_src_pkg
@@ -13,4 +16,4 @@ targets:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/edn_pkg.sv
-  
+

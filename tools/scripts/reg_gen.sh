@@ -1,5 +1,5 @@
+#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,17 +14,63 @@
 # limitations under the License.
 #
 
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/keyvault/rtl/kv_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/pcrvault/rtl/pv_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/datavault/rtl/dv_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/ecc/rtl/ecc_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha512/rtl/sha512_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha256/rtl/sha256_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha3/rtl/sha3_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/rtl/mbox_csr.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/rtl/sha512_acc_csr.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/rtl/soc_ifc_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/hmac/rtl/hmac_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/doe/rtl/doe_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/axi/rtl/axi_dma_reg.rdl
-python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/aes/rtl/aes_clp_reg.rdl
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/keyvault/data/kv_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/keyvault/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/keyvault/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/pcrvault/data/pv_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/pcrvault/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/pcrvault/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/datavault/data/dv_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/datavault/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/datavault/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/ecc/data/ecc_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/ecc/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/ecc/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha512/data/sha512_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/sha512/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/sha512/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha256/data/sha256_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/sha256/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/sha256/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/sha3/data/sha3_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/sha3/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/sha3/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/data/mbox_csr.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/soc_ifc/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/soc_ifc/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/data/sha512_acc_csr.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/soc_ifc/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/soc_ifc/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/soc_ifc/data/soc_ifc_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/soc_ifc/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/soc_ifc/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/hmac/data/hmac_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/hmac/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/hmac/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/doe/data/doe_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/doe/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/doe/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/axi/data/axi_dma_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/axi/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/axi/dv/reg_model
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/aes/data/aes_clp_reg.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/aes/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/aes/dv/reg_model \
+    --cov
+
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/libs/data/interrupt_regs.rdl \
+    --rtl-output $CALIPTRA_ROOT/src/libs/rtl/generated \
+    --dv-output  $CALIPTRA_ROOT/src/libs/dv/reg_model

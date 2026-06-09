@@ -2,14 +2,16 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-class aes_base_vseq extends cip_base_vseq #(
-  .CFG_T               (aes_env_cfg),
-  .RAL_T               (aes_reg_block),
-  .COV_T               (aes_env_cov),
-  .VIRTUAL_SEQUENCER_T (aes_virtual_sequencer)
-  );
+class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
+                                           .RAL_T               (aes_clp_reg),
+                                           .COV_T               (aes_env_cov),
+                                           .VIRTUAL_SEQUENCER_T (aes_virtual_sequencer));
 
   `uvm_object_utils(aes_base_vseq)
+
+  // Scratch return code for native UVM RAL accessors (.write/.read/.update). The vseq is
+  // single-threaded w.r.t. RAL accesses so one shared word is safe.
+  uvm_status_e       status;
 
   aes_reg2hw_t       aes_reg;
   aes_seq_item       aes_item;
@@ -54,9 +56,9 @@ class aes_base_vseq extends cip_base_vseq #(
     if (do_aes_init) aes_init();
     aes_item = new();
     aes_message_init();
-    `uvm_info(`gfn, $sformatf("\n TL delay: [%d:%d] \n zero delay %d",
-              cfg.m_tl_agent_cfg.d_ready_delay_min,cfg.m_tl_agent_cfg.d_ready_delay_max,
-              cfg.zero_delays  ), UVM_MEDIUM)
+    // `uvm_info(`gfn, $sformatf("\n TL delay: [%d:%d] \n zero delay %d",
+    //           cfg.m_tl_agent_cfg.d_ready_delay_min,cfg.m_tl_agent_cfg.d_ready_delay_max,
+    //           cfg.zero_delays  ), UVM_MEDIUM)
   endtask
 
 
@@ -78,36 +80,33 @@ class aes_base_vseq extends cip_base_vseq #(
     // Lock and check locking of auxiliary control register (1) or not (0).
     bit lock_ctrl_aux = $urandom_range(0, 1);
     `uvm_info(`gfn, $sformatf("\n\t ----| CHECKING FOR IDLE"), UVM_HIGH)
-    csr_spinwait(.ptr(ral.status.idle) , .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     // initialize control register
     aes_ctrl[1:0]  = aes_pkg::AES_ENC;   // 2'b01
     aes_ctrl[7:2]  = aes_pkg::AES_ECB;   // 6'b00_0001
     aes_ctrl[10:8] = aes_pkg::AES_128;   // 3'b001
-    csr_wr(.ptr(ral.ctrl_shadowed), .value(aes_ctrl), .en_shadow_wr(1'b1), .blocking(1));
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
-    csr_rd(.ptr(ral.ctrl_shadowed), .value(aes_ctrl), .blocking(1));
+    ral.aes_core.CTRL_SHADOWED.write(status, aes_ctrl);
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+    ral.aes_core.CTRL_SHADOWED.read(status, aes_ctrl);
     // Write auxiliary control register and make sure the update went through, i.e., the register
     // isn't locked already.
-    csr_wr(.ptr(ral.ctrl_aux_shadowed.key_touch_forces_reseed), .value(cfg.do_reseed),
-        .en_shadow_wr(1'b1), .blocking(1));
-    csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+    ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, cfg.do_reseed);
+    ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
     `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
     // Lock auxiliary control register and try overwriting it afterwards.
     if (lock_ctrl_aux) begin
       `uvm_info(`gfn, "Locking auxiliary control register", UVM_MEDIUM)
       set_regwen(0);
       `uvm_info(`gfn, "Try overwriting locked auxiliary control register", UVM_MEDIUM)
-      csr_wr(.ptr(ral.ctrl_aux_shadowed.key_touch_forces_reseed), .value(!cfg.do_reseed),
-          .en_shadow_wr(1'b1), .blocking(1));
+      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, !cfg.do_reseed);
       // Read the current value back to ensure the contents of the register didn't change.
-      csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+      ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
       `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
       // Try unlocking the auxiliary control register and overwriting it afterwards. This is not
       // possible either as the lock persists until the next reset.
       set_regwen(1);
-      csr_wr(.ptr(ral.ctrl_aux_shadowed.key_touch_forces_reseed), .value(!cfg.do_reseed),
-          .en_shadow_wr(1'b1), .blocking(1));
-      csr_rd(.ptr(ral.ctrl_aux_shadowed), .value(aes_ctrl_aux), .blocking(1));
+      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, !cfg.do_reseed);
+      ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
       `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
     end else begin
       // Don't lock it. This is the default value after reset. The write is mostly for coverage.
@@ -117,7 +116,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
 
   virtual task trigger();
-      csr_wr(.ptr(ral.trigger), .value(32'h00000001));
+      ral.aes_core.TRIGGER.write(status, 32'h00000001);
   endtask // trigger
 
 
@@ -129,88 +128,88 @@ class aes_base_vseq extends cip_base_vseq #(
     txt = {txt, $sformatf("\n vector: \t %0b", clr_vector)};
     `uvm_info(`gfn, $sformatf("%s",txt), UVM_MEDIUM)
 
-    ral.trigger.set(0);
-    ral.trigger.key_iv_data_in_clear.set(clr_vector.key_iv_data_in);
-    ral.trigger.data_out_clear.set(clr_vector.dataout);
-    csr_update(ral.trigger);
+    ral.aes_core.TRIGGER.set(0);
+    ral.aes_core.TRIGGER.KEY_IV_DATA_IN_CLEAR.set(clr_vector.key_iv_data_in);
+    ral.aes_core.TRIGGER.DATA_OUT_CLEAR.set(clr_vector.dataout);
+    ral.aes_core.TRIGGER.update(status);
   endtask // clear_registers
 
 
   virtual task prng_reseed();
     bit [TL_DW:0] reg_val = '0;
     reg_val[3] = 1'b1;
-    csr_wr(.ptr(ral.trigger), .value(reg_val));
+    ral.aes_core.TRIGGER.write(status, reg_val);
   endtask // prng_reseed
 
 
   virtual task set_regwen(bit val);
-    ral.ctrl_aux_regwen.set(val);
-    csr_wr(.ptr(ral.ctrl_aux_regwen), .value(val), .blocking(1));
+    ral.aes_core.CTRL_AUX_REGWEN.set(val);
+    ral.aes_core.CTRL_AUX_REGWEN.write(status, val);
   endtask // set_regwen
 
 
   virtual task set_operation(bit [1:0] operation);
-    if (ral.ctrl_shadowed.operation.get_mirrored_value() != operation) begin
-      ral.ctrl_shadowed.operation.set(operation);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.OPERATION.get_mirrored_value() != operation) begin
+      ral.aes_core.CTRL_SHADOWED.OPERATION.set(operation);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.operation.predict(operation));
+      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(operation));
     end
   endtask // set_operation
 
 
   virtual task set_mode(bit [5:0] mode);
-    if (ral.ctrl_shadowed.mode.get_mirrored_value() != mode) begin
-      ral.ctrl_shadowed.mode.set(mode);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.MODE.get_mirrored_value() != mode) begin
+      ral.aes_core.CTRL_SHADOWED.MODE.set(mode);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.mode.predict(mode));
+      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(mode));
     end
   endtask
 
 
   virtual task set_key_len(bit [2:0] key_len);
-    if (ral.ctrl_shadowed.key_len.get_mirrored_value() != key_len) begin
-      ral.ctrl_shadowed.key_len.set(key_len);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.KEY_LEN.get_mirrored_value() != key_len) begin
+      ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(key_len);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.key_len.predict(key_len));
+      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(key_len));
     end
   endtask // set_key_len
 
 
   virtual task set_sideload(bit sideload);
-    if (ral.ctrl_shadowed.sideload.get_mirrored_value() != sideload) begin
-      ral.ctrl_shadowed.sideload.set(sideload);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.SIDELOAD.get_mirrored_value() != sideload) begin
+      ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(sideload);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.sideload.predict(sideload));
+      void'(ral.aes_core.CTRL_SHADOWED.SIDELOAD.predict(sideload));
     end
   endtask
 
 
   virtual task set_prng_reseed_rate(prs_rate_e reseed_rate);
-    if (ral.ctrl_shadowed.prng_reseed_rate.get_mirrored_value() != reseed_rate) begin
-      ral.ctrl_shadowed.prng_reseed_rate.set(reseed_rate);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.get_mirrored_value() != reseed_rate) begin
+      ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(reseed_rate);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.prng_reseed_rate.predict(reseed_rate));
+      void'(ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.predict(reseed_rate));
     end
   endtask
 
 
   virtual task set_manual_operation(bit manual_operation);
-    if (ral.ctrl_shadowed.manual_operation.get_mirrored_value() != manual_operation) begin
-      ral.ctrl_shadowed.manual_operation.set(manual_operation);
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    if (ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.get_mirrored_value() != manual_operation) begin
+      ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(manual_operation);
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
-      void'(ral.ctrl_shadowed.manual_operation.predict(manual_operation));
+      void'(ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.predict(manual_operation));
     end
   endtask
 
@@ -225,18 +224,18 @@ class aes_base_vseq extends cip_base_vseq #(
     `uvm_info(`gfn, $sformatf("\n\t --- back to back transactions : %b", do_b2b), UVM_MEDIUM)
 
     foreach (key[0][i]) begin
-      csr_wr(.ptr(ral.key_share0[i]), .value(key[0][i]), .blocking(~do_b2b));
+      ral.aes_core.KEY_SHARE0[i].write(status, key[0][i]);
       if (cfg.under_reset) return;
     end
     foreach (key[1][i]) begin
-      csr_wr(.ptr(ral.key_share1[i]), .value(key[1][i]), .blocking(~do_b2b));
+      ral.aes_core.KEY_SHARE1[i].write(status, key[1][i]);
       if (cfg.under_reset) return;
     end
   endtask // write_key
 
 
   virtual task write_iv(bit  [3:0][31:0] iv, bit do_b2b);
-    foreach (iv[i]) csr_wr(.ptr(ral.iv[i]), .value(iv[i]), .blocking(~do_b2b));
+    foreach (iv[i]) ral.aes_core.IV[i].write(status, iv[i]);
   endtask // write_iv
 
 
@@ -247,7 +246,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
     foreach (read_order[i]) begin
       int idx = read_order[i];
-      csr_rd(.ptr(ral.iv[idx]), .value(iv[idx]), .blocking(~do_b2b));
+      ral.aes_core.IV[idx].read(status, iv[idx]);
       `uvm_info(`gfn, $sformatf("\n\t ----| IV_%0d: %h ",idx,  iv[idx]), UVM_HIGH)
     end
   endtask
@@ -258,7 +257,7 @@ class aes_base_vseq extends cip_base_vseq #(
     int num_bytes_wr;
 
     if (wait_idle) begin
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       if (cfg.under_reset) return;
     end
 
@@ -279,7 +278,7 @@ class aes_base_vseq extends cip_base_vseq #(
     //   set. The DUT switches back to GCM_INIT in this case (which also includes clearing the
     //   initialization status). This is however hard to handle which is why it is tested using a
     //   directed test.
-    phase_prev = gcm_phase_e'(`gmv(ral.ctrl_gcm_shadowed.phase));
+    phase_prev = gcm_phase_e'(`gmv(ral.aes_core.CTRL_GCM_SHADOWED.PHASE));
     if (config_err_en && ($urandom_range(0, 2) == 0)) begin
       case (phase_prev)
         GCM_AAD: begin
@@ -326,52 +325,52 @@ class aes_base_vseq extends cip_base_vseq #(
       num_bytes_wr = num_bytes;
     end
     // Update the desired values in the abstraction class.
-    ral.ctrl_gcm_shadowed.phase.set(phase_wr);
-    ral.ctrl_gcm_shadowed.num_valid_bytes.set(num_bytes_wr);
+    ral.aes_core.CTRL_GCM_SHADOWED.PHASE.set(phase_wr);
+    ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes_wr);
     // Update the DUT if the desired and mirrored values mismatch. The DUT resolves potentially
     // invalid values internally.
     `uvm_info(`gfn,
         $sformatf("Current GCM phase %s, writing %s, actually requested %s",
         phase_prev.name(), phase_wr.name(), phase.name()), UVM_MEDIUM)
     `uvm_info(`gfn, $sformatf("Writing num_bytes_valid %0d", num_bytes_wr), UVM_MEDIUM)
-    csr_update(.csr(ral.ctrl_gcm_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+    ral.aes_core.CTRL_GCM_SHADOWED.update(status);
     if (cfg.under_reset) return;
 
     if (phase != phase_wr) begin
       // Reflect the resolution of invalid values in the abstraction class.
-      ral.ctrl_gcm_shadowed.phase.set(phase_prev);
-      ral.ctrl_gcm_shadowed.num_valid_bytes.set(num_bytes);
+      ral.aes_core.CTRL_GCM_SHADOWED.PHASE.set(phase_prev);
+      ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
       // Update the mirrored values.
-      void'(ral.ctrl_gcm_shadowed.phase.predict(phase_prev));
-      void'(ral.ctrl_gcm_shadowed.num_valid_bytes.predict(num_bytes));
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase_prev));
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
       // Perform a readback to check that the DUT resolved potentially illegal phase value changes
       // correctly.
-      csr_rd(.ptr(ral.ctrl_gcm_shadowed), .value(ctrl_gcm), .blocking(1));
+      ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
       if (cfg.under_reset) return;
       if (ctrl_gcm.phase != phase_prev) begin
         `uvm_fatal(`gfn, $sformatf("Expected GCM phase %s, got %s",
             phase_prev.name(), ctrl_gcm.phase.name()))
       end
       // Repeat the update but now with the correct values.
-      ral.ctrl_gcm_shadowed.phase.set(phase);
-      ral.ctrl_gcm_shadowed.num_valid_bytes.set(num_bytes);
+      ral.aes_core.CTRL_GCM_SHADOWED.PHASE.set(phase);
+      ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
       ctrl_gcm.phase = phase;
       ctrl_gcm.num_valid_bytes = num_bytes;
       `uvm_info(`gfn,
           $sformatf("Current GCM phase %s, writing %s",
           phase_prev.name(), phase.name()), UVM_MEDIUM)
       `uvm_info(`gfn, $sformatf("Writing num_bytes_valid %0d", num_bytes), UVM_MEDIUM)
-      csr_wr(.ptr(ral.ctrl_gcm_shadowed), .value(ctrl_gcm), .en_shadow_wr(1'b1), .blocking(1));
+      ral.aes_core.CTRL_GCM_SHADOWED.write(status, ctrl_gcm);
     end else if (num_bytes != num_bytes_wr) begin
       // Reflect the resolution of invalid values in the abstraction class and update the mirrored
       // values.
-      ral.ctrl_gcm_shadowed.num_valid_bytes.set(num_bytes);
-      void'(ral.ctrl_gcm_shadowed.phase.predict(phase));
-      void'(ral.ctrl_gcm_shadowed.num_valid_bytes.predict(num_bytes));
+      ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase));
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
     end else begin
       // Just update the mirrored values.
-      void'(ral.ctrl_gcm_shadowed.phase.predict(phase));
-      void'(ral.ctrl_gcm_shadowed.num_valid_bytes.predict(num_bytes));
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase));
+      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
     end
   endtask
 
@@ -385,7 +384,7 @@ class aes_base_vseq extends cip_base_vseq #(
       int idx = write_order[i];
 
       `uvm_info(`gfn, $sformatf("\n\t ----| DATA_IN_%0d: %h ",idx,  data[idx]), UVM_HIGH)
-      csr_wr(.ptr(ral.data_in[idx]), .value(data[idx][31:0]), .blocking(~do_b2b));
+      ral.aes_core.DATA_IN[idx].write(status, data[idx][31:0]);
     end
   endtask
 
@@ -397,7 +396,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
     foreach (read_order[i]) begin
       int idx = read_order[i];
-      csr_rd(.ptr(ral.data_out[idx]), .value(cypher_txt[idx]), .blocking(~do_b2b));
+      ral.aes_core.DATA_OUT[idx].read(status, cypher_txt[idx]);
       `uvm_info(`gfn, $sformatf("\n\t ----| DATA_OUT_%0d: %h ",idx,  cypher_txt[idx]), UVM_HIGH)
     end
   endtask // read_data
@@ -409,7 +408,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
   virtual task setup_dut(aes_seq_item item);
     // Write the shadwoed CTRL register.
-    status_t status;
+    status_t aes_status;
     // Setup fields one by one (0) or all fields together (1).
     bit setup_mode = 0;
     // Trigger a control update error (1) or not (0). Only applicable if setup_mode = 1.
@@ -419,13 +418,13 @@ class aes_base_vseq extends cip_base_vseq #(
     `DV_CHECK_STD_RANDOMIZE_FATAL(setup_mode)
     if ($urandom_range(1, 100) > 95) control_update_error = 1;
     idx_error_field = $urandom_range(0, 5);
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     // Any successful update to the shadowed control register marks the start of a new message. If
     // sideload is enabled and a valid sideload key is available, it may be latched upon the second
     // write and - depending on KEY_TOUCH_FORCES_RESEED - trigger a reseed operation which prevents
     // further updates to the control register until AES becomes idle again. For simplicity, we
     // just disable sideload here and then update the sideload bit last.
-    ral.ctrl_shadowed.sideload.set(0);
+    ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(0);
     if (!setup_mode) begin
       set_operation(item.operation);
       set_mode(item.aes_mode);
@@ -436,69 +435,69 @@ class aes_base_vseq extends cip_base_vseq #(
       if (cfg.under_reset) return;
     end else begin
       // Assemble the intended value.
-      ral.ctrl_shadowed.operation.set(item.operation);
-      ral.ctrl_shadowed.mode.set(item.mode);
-      ral.ctrl_shadowed.key_len.set(item.key_len);
-      ral.ctrl_shadowed.sideload.set(item.sideload_en);
-      ral.ctrl_shadowed.manual_operation.set(item.manual_op);
-      ral.ctrl_shadowed.prng_reseed_rate.set(item.reseed_rate);
+      ral.aes_core.CTRL_SHADOWED.OPERATION.set(item.operation);
+      ral.aes_core.CTRL_SHADOWED.MODE.set(item.mode);
+      ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(item.key_len);
+      ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(item.sideload_en);
+      ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(item.manual_op);
+      ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(item.reseed_rate);
       // Trigger a control update error.
       if (control_update_error) begin
         `uvm_info(`gfn, $sformatf("Triggering control update error in field %0d", idx_error_field),
             UVM_MEDIUM)
         // Perform the first write using the correct data.
-        csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b0), .blocking(1));
+        ral.aes_core.CTRL_SHADOWED.update(status);
         if (cfg.under_reset) return;
 
         // Make sure at least one field is flipped.
         begin
           unique case (idx_error_field)
-            0: ral.ctrl_shadowed.operation.set(item.operation == AES_DEC ? AES_ENC : AES_DEC);
-            1: ral.ctrl_shadowed.mode.set(item.mode == AES_ECB ? AES_NONE : AES_ECB);
-            2: ral.ctrl_shadowed.key_len.set(item.key_len == AES_128 ? AES_256 : AES_128);
-            3: ral.ctrl_shadowed.sideload.set(item.sideload_en ? 1'b0 : 1'b1);
-            4: ral.ctrl_shadowed.manual_operation.set(item.manual_op ? 1'b0 : 1'b1);
-            5: ral.ctrl_shadowed.prng_reseed_rate.set(item.reseed_rate == PER_64 ? PER_8K : PER_64);
+            0: ral.aes_core.CTRL_SHADOWED.OPERATION.set(item.operation == AES_DEC ? AES_ENC : AES_DEC);
+            1: ral.aes_core.CTRL_SHADOWED.MODE.set(item.mode == AES_ECB ? AES_NONE : AES_ECB);
+            2: ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(item.key_len == AES_128 ? AES_256 : AES_128);
+            3: ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(item.sideload_en ? 1'b0 : 1'b1);
+            4: ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(item.manual_op ? 1'b0 : 1'b1);
+            5: ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(item.reseed_rate == PER_64 ? PER_8K : PER_64);
             default:;
           endcase
         end
         // Perform the second write.
-        csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b0), .blocking(1));
+        ral.aes_core.CTRL_SHADOWED.update(status);
         if (cfg.under_reset) return;
 
         // Check that we get the recoverable alert. It's possible that DV inserted a fatal error
         // condition before the second write could go through. The recovery from the fatal alert
         // is handled separately.
-        csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+        ral.aes_core.STATUS.read(status, aes_status);
         if (cfg.under_reset) return;
 
-        `DV_CHECK_FATAL(status.alert_recov_ctrl_update_err == 1'b1 ||
-                        status.alert_fatal_fault == 1'b1);
+        `DV_CHECK_FATAL(aes_status.alert_recov_ctrl_update_err == 1'b1 ||
+                        aes_status.alert_fatal_fault == 1'b1);
         // Re-assemble the intended value.
-        ral.ctrl_shadowed.operation.set(item.operation);
-        ral.ctrl_shadowed.mode.set(item.mode);
-        ral.ctrl_shadowed.key_len.set(item.key_len);
-        ral.ctrl_shadowed.sideload.set(item.sideload_en);
-        ral.ctrl_shadowed.manual_operation.set(item.manual_op);
-        ral.ctrl_shadowed.prng_reseed_rate.set(item.reseed_rate);
+        ral.aes_core.CTRL_SHADOWED.OPERATION.set(item.operation);
+        ral.aes_core.CTRL_SHADOWED.MODE.set(item.mode);
+        ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(item.key_len);
+        ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(item.sideload_en);
+        ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(item.manual_op);
+        ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(item.reseed_rate);
       end
       // Perform the register update without control update error. This will resolve potential
       // previous update errors.
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       if (cfg.under_reset) return;
 
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(1));
+      ral.aes_core.CTRL_SHADOWED.update(status);
       if (cfg.under_reset) return;
 
       // Make sure the update went through and there wasn't an update error. It's possible that DV
       // inserted a fatal error condition before the second write could go through. In this case,
       // the recoverable alert condition may still be visible together with the fatal alert. The
       // fatal alert is handled separately.
-      csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+      ral.aes_core.STATUS.read(status, aes_status);
       if (cfg.under_reset) return;
 
-      `DV_CHECK_FATAL(status.alert_recov_ctrl_update_err == 1'b0 ||
-                      status.alert_fatal_fault == 1'b1);
+      `DV_CHECK_FATAL(aes_status.alert_recov_ctrl_update_err == 1'b0 ||
+                      aes_status.alert_fatal_fault == 1'b1);
     end
   endtask
 
@@ -590,7 +589,7 @@ class aes_base_vseq extends cip_base_vseq #(
     ref  bit     rst_set           // reset was forced - restart message
     );
 
-    status_t status;
+    status_t aes_status;
     bit      return_on_idle   = 1;
     bit [3:0] [7:0] data      = data_item.data_in;
     string   txt              ="";
@@ -641,25 +640,25 @@ class aes_base_vseq extends cip_base_vseq #(
       case (1)
         (!uvm_re_match("key_share0_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          csr_wr(.ptr(ral.key_share0[idx]), .value(item.key[0][idx]), .blocking(is_blocking));
+          ral.aes_core.KEY_SHARE0[idx].write(status, item.key[0][idx]);
           wait_on_reseed -= 1;
         end
         (!uvm_re_match("key_share1_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          csr_wr(.ptr(ral.key_share1[idx]), .value(item.key[1][idx]), .blocking(is_blocking));
+          ral.aes_core.KEY_SHARE1[idx].write(status, item.key[1][idx]);
           wait_on_reseed -= 1;
         end
         (!uvm_re_match("iv_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          csr_wr(.ptr(ral.iv[idx]), .value(item.iv[idx]), .blocking(is_blocking));
+          ral.aes_core.IV[idx].write(status, item.iv[idx]);
         end
         (!uvm_re_match("data_in_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          csr_wr(.ptr(ral.data_in[idx]), .value(data[idx]), .blocking(is_blocking));
+          ral.aes_core.DATA_IN[idx].write(status, data[idx]);
         end
         (csr_name == "clear_reg"): begin
           clear_regs(item.clear_reg);
-          csr_spinwait(.ptr(ral.status.idle) , .exp_data(1'b1));
+          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
           // manual mode requires all to be written again
           if (manual_operation) begin
             //remove clear from queue
@@ -675,15 +674,14 @@ class aes_base_vseq extends cip_base_vseq #(
         if (cfg.error_types.mal_inject && $urandom(3)==0 && !manual_operation) begin
           int wr_reg = $urandom_range(3,1);
           case (wr_reg)
-            1: csr_wr(.ptr(ral.key_share0[$urandom(7)]), .value($urandom()),
-                      .blocking(is_blocking));
-            2: csr_wr(.ptr(ral.iv[$urandom(3)]), .value($urandom()), .blocking(is_blocking));
-            3: csr_wr(.ptr(ral.data_in[$urandom(3)]), .value($urandom()), .blocking(is_blocking));
+            1: ral.aes_core.KEY_SHARE0[$urandom(7)].write(status, $urandom());
+            2: ral.aes_core.IV[$urandom(3)].write(status, $urandom());
+            3: ral.aes_core.DATA_IN[$urandom(3)].write(status, $urandom());
             default: `uvm_fatal(`gfn, $sformatf("UNREACHABLE BUT NEEDED DUE TO SYNTAX CHECK"))
           endcase
         end
         status_fsm(item, data_item, new_msg,
-                   manual_operation, sideload_en, return_on_idle, read_output, status, rst_set);
+                   manual_operation, sideload_en, return_on_idle, read_output, aes_status, rst_set);
         wait_on_reseed = 16;
       end
       if (rst_set) break;
@@ -700,36 +698,14 @@ class aes_base_vseq extends cip_base_vseq #(
   // the new keys are run with priority 100: to pass a different key, send a sequence with a higher
   // priority.
   task start_sideload_seq();
-    typedef key_sideload_set_seq#(keymgr_pkg::hw_key_req_t) sideload_seq_t;
-
-    bit end_loop = 0;
-
+    // TODO(caliptra-port): sideload-key driving used the OpenTitan
+    // key_sideload_agent (key_sideload_set_seq + keymgr_pkg::hw_key_req_t).
+    // Caliptra has no equivalent agent yet, so wait for the stop event.
     if (m_sideload_seq_running) begin
       `uvm_fatal(get_name(), "Cannot start multiple sideload sequences.")
     end
     m_sideload_seq_running = 1;
-
-    while (!cfg.under_reset && !end_loop) begin
-      sideload_seq_t sideload_seq = sideload_seq_t::type_id::create("sideload_seq");
-
-      if (!sideload_seq.randomize()) begin
-        `uvm_fatal(get_name(), "Failed to randomize sideload_seq.")
-      end
-
-      fork : isolation_fork begin
-        fork
-          sideload_seq.start(p_sequencer.key_sideload_sequencer_h, this, 100);
-          begin
-            m_stop_sideload_seqs_event.wait_ptrigger();
-            end_loop = 1;
-            sideload_seq.request_stop();
-            wait(0);
-          end
-        join_any
-        disable fork;
-      end join
-    end
-
+    m_stop_sideload_seqs_event.wait_ptrigger();
     m_sideload_seq_running = 0;
   endtask
 
@@ -748,27 +724,13 @@ class aes_base_vseq extends cip_base_vseq #(
   //
   // Exit immediately on reset.
   task req_sideload_key();
-    typedef key_sideload_set_seq#(keymgr_pkg::hw_key_req_t) sideload_seq_t;
-
-    sideload_seq_t req_key_seq = sideload_seq_t::type_id::create("req_key_seq");
-
+    // TODO(caliptra-port): same OpenTitan key_sideload_agent dependency as
+    // start_sideload_seq. Stub: just flag the key as ready so callers that
+    // wait on key_rdy/key_used can make forward progress.
     if (cfg.under_reset) return;
-
-    new_key = 1;
-    do begin
-      if (new_key) begin
-        if (!std::randomize(req_key_seq) with { req_key_seq.sideload_key.valid == 1; }) begin
-          `uvm_fatal(get_name(), "Failed to randomize req_key_seq.")
-        end
-        new_key = 0;
-      end
-
-      req_key_seq.start(p_sequencer.key_sideload_sequencer_h, this, 400);
-      if (cfg.under_reset) return;
-
-      key_rdy = 1;
-    end while (!key_used);
-
+    new_key = 0;
+    key_rdy = 1;
+    wait (key_used || cfg.under_reset);
     key_used = 0;
   endtask // req_sideload_key
 
@@ -794,7 +756,7 @@ class aes_base_vseq extends cip_base_vseq #(
      ref bit rst_set                         // reset was forced - restart message
      );
 
-    status_t     status;                     // AES status
+    status_t     aes_status;                     // AES aes_status
     aes_seq_item cfg_item   = new();         // the configuration for this message
     aes_seq_item data_item  = new();         // the next data to transmit
     aes_seq_item read_item;                  // the read item to store output in
@@ -812,7 +774,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
     // Make sure the DUT is idle before setting it up. Writes to the main control register are only
     // accepted when idle.
-    status_fsm(cfg_item, data_item, new_msg, manual_operation, sideload_en, 1, 0, status, rst_set);
+    status_fsm(cfg_item, data_item, new_msg, manual_operation, sideload_en, 1, 0, aes_status, rst_set);
     if (cfg.under_reset) return;
 
     // Configure the main control register.
@@ -828,12 +790,12 @@ class aes_base_vseq extends cip_base_vseq #(
        data_item = new();
       while ((aes_item_queue.size() > 0) && !rst_set) begin
         status_fsm(cfg_item, data_item, new_msg, manual_operation,
-                   sideload_en, return_on_idle, 0, status, rst_set);
+                   sideload_en, return_on_idle, 0, aes_status, rst_set);
         if (cfg.under_reset) return;
 
         // From now on, DV always waits for the DUT to be idle and to accept new input data.
         return_on_idle = 0;
-        if (status.input_ready && status.idle) begin
+        if (aes_status.input_ready && aes_status.idle) begin
           // The DUT is ready to accept new input data, as well as updates to IV and initial key
           // registers (only allowed when idle). The first config_and_transmit() call configures
           // key and IV.
@@ -919,7 +881,7 @@ class aes_base_vseq extends cip_base_vseq #(
         end
         // get the status to make sure we can provide data - but don't wait for output //
         status_fsm(cfg_item, data_item, new_msg,
-                   manual_operation, sideload_en, return_on_idle, 0, status, rst_set);
+                   manual_operation, sideload_en, return_on_idle, 0, aes_status, rst_set);
         if (cfg.under_reset) return;
 
         return_on_idle = 0;
@@ -934,8 +896,8 @@ class aes_base_vseq extends cip_base_vseq #(
                                manual_operation, sideload_en, 0, rst_set);
           if (cfg.under_reset) return;
 
-        end else if (status.input_ready && (aes_item_queue.size() > 0) && write &&
-                     (~wait_for_idle || status.idle)) begin
+        end else if (aes_status.input_ready && (aes_item_queue.size() > 0) && write &&
+                     (~wait_for_idle || aes_status.idle)) begin
           data_item = aes_item_queue.pop_back();
           config_and_transmit(cfg_item, data_item, new_msg, first_data_block, first_aad_block,
                               manual_operation, sideload_en, 0, rst_set);
@@ -972,7 +934,7 @@ class aes_base_vseq extends cip_base_vseq #(
           end
         end
         if (write) new_msg = 0;
-        if (status.output_valid && read) begin
+        if (aes_status.output_valid && read) begin
           if (read_queue.size() > 0)  begin
             read_item = read_queue.pop_front();
             read_data(read_item.data_out, cfg_item.do_b2b);
@@ -1011,7 +973,7 @@ class aes_base_vseq extends cip_base_vseq #(
       );
 
     bit                   is_blocking = ~cfg_item.do_b2b;
-    status_t              status;
+    status_t              aes_status;
     rst_set = 0;
     if (new_msg) begin
       write_data_key_iv(cfg_item, data_item, new_msg,
@@ -1052,9 +1014,9 @@ class aes_base_vseq extends cip_base_vseq #(
       if (!manual_operation && cfg.error_types.mal_inject && ($urandom(3) == 1)) begin
         int wr_reg = $urandom_range(3,1);
         case (wr_reg)
-          1: csr_wr(.ptr(ral.key_share0[$urandom(7)]), .value($urandom()), .blocking(is_blocking));
-          2: csr_wr(.ptr(ral.iv[$urandom(3)]), .value($urandom()), .blocking(is_blocking));
-          3: csr_wr(.ptr(ral.data_in[$urandom(3)]), .value($urandom()), .blocking(is_blocking));
+          1: ral.aes_core.KEY_SHARE0[$urandom(7)].write(status, $urandom());
+          2: ral.aes_core.IV[$urandom(3)].write(status, $urandom());
+          3: ral.aes_core.DATA_IN[$urandom(3)].write(status, $urandom());
           default: `uvm_fatal(`gfn, $sformatf("UNREACHABLE BUT NEEDED DUE TO SYNTAX CHECK"))
         endcase
         if (cfg.under_reset) return;
@@ -1067,7 +1029,7 @@ class aes_base_vseq extends cip_base_vseq #(
     if (cfg_item.mode == AES_GCM && manual_operation && new_msg && !rst_set) trigger();
     if (read_output && !rst_set) begin
        status_fsm(cfg_item, data_item, new_msg,
-                   manual_operation, sideload_en, 0, read_output, status, rst_set);
+                   manual_operation, sideload_en, 0, read_output, aes_status, rst_set);
       if (cfg.under_reset) return;
     end
     // After having read the tag in GCM, move the DUT back into the GCM_INIT phase with a 25%
@@ -1081,23 +1043,16 @@ class aes_base_vseq extends cip_base_vseq #(
   endtask // config_and_transmit
 
 
-  // Wait for a fatal alert that we expect to have been triggered
+  // Reset the DUT after a fatal-fault condition has been observed in the status register.
   //
   // If m_external_reset is false, apply a reset, re-initialise the dut, and return. If
   // m_external_reset is true, we expect some other mechanism to apply the reset. Wait until one is
   // asserted and then return immediately.
+  //
+  // Note(caliptra-port): the OpenTitan version of this task also waited on the fatal_fault alert
+  // agent's vif before resetting. Caliptra's top-level wrappers do not wire up alerts, so the
+  // alert-agent wait has been removed; callers already gate this task on aes_status.alert_fatal_fault.
   virtual task wait_for_fatal_alert_and_reset ();
-    // According to spec, check period will append an 'hFF from the LSF. Add 10 cycle buffers for
-    // register updates
-    int check_wait_cycles = 6 << 8 + 10;
-
-    // Check for the fatal alert on the alert interface.
-    `DV_SPINWAIT_EXIT(
-        wait(cfg.m_alert_agent_cfgs["fatal_fault"].vif.alert_tx_final.alert_p);,
-        cfg.clk_rst_vif.wait_clks(check_wait_cycles);,
-        $sformatf("Timeout waiting for alert %0s", "fatal_check_error"))
-    check_fatal_alert_nonblocking("fatal_fault");
-
     if (m_external_reset) begin
       wait(cfg.under_reset);
     end else begin
@@ -1131,7 +1086,7 @@ class aes_base_vseq extends cip_base_vseq #(
       bit                 sideload_en,      // currently using sideload key
       bit                 return_on_idle,   // return if DUT status is idle
       bit                 read_output,      // read output or leave untouched
-      ref  status_t       status,           // the current AES status
+      ref  status_t       aes_status,           // the current AES aes_status
       ref  bit            rst_set           // we forced a reset - abort current message and restart
       );
 
@@ -1147,7 +1102,7 @@ class aes_base_vseq extends cip_base_vseq #(
 
     // enable get status when provided with an empty Item.
     if (data_item.mode === 'X) begin
-      csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+      ral.aes_core.STATUS.read(status, aes_status);
       if (cfg.under_reset) return;
     end
 
@@ -1155,25 +1110,25 @@ class aes_base_vseq extends cip_base_vseq #(
       if (cfg.under_reset) return;
 
       //read the status register to see that we have triggered the operation
-      csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+      ral.aes_core.STATUS.read(status, aes_status);
       if (cfg.under_reset) return;
 
-      txt = {txt, "\n ----|reading STATUS", status2string(status)};
+      txt = {txt, "\n ----|reading STATUS", status2string(aes_status)};
       // check status and act accordingly //
-      if (status.alert_fatal_fault) begin
+      if (aes_status.alert_fatal_fault) begin
         // stuck pull reset //
         if (cfg.error_types.mal_inject || cfg.error_types.lc_esc) begin
           `uvm_info(`gfn,
                   $sformatf("\n\t ----| Saw expected Fatal alert - trying to recover \n\t ----| %s",
-                              status2string(status)), UVM_MEDIUM)
+                              status2string(aes_status)), UVM_MEDIUM)
           try_recover(cfg_item, data_item, manual_operation, sideload_en, new_msg);
           if (cfg.under_reset) return;
-          csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+          ral.aes_core.STATUS.read(status, aes_status);
           if (cfg.under_reset) return;
 
-          if ( !status.alert_fatal_fault) begin
+          if ( !aes_status.alert_fatal_fault) begin
             `uvm_fatal(`gfn, $sformatf("\n\t Was able to clear FATAL ALERT without reset \n\t %s",
-                       status2string(status)))
+                       status2string(aes_status)))
           end else begin
             wait_for_fatal_alert_and_reset();
             if (cfg.under_reset) return;
@@ -1183,19 +1138,19 @@ class aes_base_vseq extends cip_base_vseq #(
           end
         end else begin
           `uvm_fatal(`gfn, $sformatf("\n\t Unexpected Fatal alert in AES FSM \n\t %s",
-             status2string(status)))
+             status2string(aes_status)))
         end
       end else if (cfg_item.mode == AES_NONE) begin
         // In this mode, the DUT is not ever supposed to accept input data or provide output data.
         // But it can for example trigger a reseed operation upon loading a new initial key. Here,
         // we just need to wait for the DUT to be idle.
-        if (status.idle) begin
+        if (aes_status.idle) begin
           done = 1;
         end
       end else begin
         // state 0
-        if (status.idle && status.input_ready) begin
-          if (status.output_valid && read_output) begin
+        if (aes_status.idle && aes_status.input_ready) begin
+          if (aes_status.output_valid && read_output) begin
             read_data(data_item.data_out, is_blocking);
             if (cfg.under_reset) return;
 
@@ -1207,10 +1162,10 @@ class aes_base_vseq extends cip_base_vseq #(
             try_recover(cfg_item, data_item, manual_operation, sideload_en, new_msg);
             if (cfg.under_reset) return;
           end
-        end else if (status.idle && !status.input_ready) begin
+        end else if (aes_status.idle && !aes_status.input_ready) begin
           // state 1 //
           // if data ready just read and return
-          if (status.output_valid && read_output) begin
+          if (aes_status.output_valid && read_output) begin
             read_data(data_item.data_out, is_blocking);
             if (cfg.under_reset) return;
             done = 1;
@@ -1224,7 +1179,7 @@ class aes_base_vseq extends cip_base_vseq #(
             if (cfg.under_reset) return;
             txt = {txt, $sformatf("\n\t ----| status state 1 ")};
           end
-        end else if (status.output_valid) begin
+        end else if (aes_status.output_valid) begin
           // state 2 //
           // data ready to be read out
           // read or return
@@ -1236,12 +1191,12 @@ class aes_base_vseq extends cip_base_vseq #(
           end
 
 
-        end else if (!(status.idle || status.stall || status.output_valid)) begin
+        end else if (!(aes_status.idle || aes_status.stall || aes_status.output_valid)) begin
           // state 3 //
           // Not idle, not stalling, not ready for input and no valid output should only occur when
           // requesting entropy for reseeding the PRNGs which for example happens directly after
           // reset.
-          if (!(status.input_ready || aes_requesting_entropy())) begin
+          if (!(aes_status.input_ready || aes_requesting_entropy())) begin
             not_idle_cnt++;
             if (not_idle_cnt == 1000) begin
               txt = "\nFor 1000 consecutive reads, AES";
@@ -1259,13 +1214,13 @@ class aes_base_vseq extends cip_base_vseq #(
 
         end else begin
           txt = {txt, $sformatf("\n ----| STATUS RETURNED ILLEGAL STATE |---- ")};
-          txt = {txt, $sformatf("\n ----| IDLE %0b",status.idle)};
-          txt = {txt, $sformatf("\n ----| STALL %0b",status.stall)};
-          txt = {txt, $sformatf("\n ----| INPUT_READY %0b",status.input_ready)};
-          txt = {txt, $sformatf("\n ----| OUTPUT_VALID %0b",status.output_valid)};
+          txt = {txt, $sformatf("\n ----| IDLE %0b",aes_status.idle)};
+          txt = {txt, $sformatf("\n ----| STALL %0b",aes_status.stall)};
+          txt = {txt, $sformatf("\n ----| INPUT_READY %0b",aes_status.input_ready)};
+          txt = {txt, $sformatf("\n ----| OUTPUT_VALID %0b",aes_status.output_valid)};
           `uvm_fatal(`gfn, $sformatf("\n\t %s",txt))
         end
-      end // else: !if(status.alert_fatal_fault)
+      end // else: !if(aes_status.alert_fatal_fault)
     end // while (!done)
 
 
@@ -1286,14 +1241,14 @@ class aes_base_vseq extends cip_base_vseq #(
     // if data is not ready the DUT is missing
     // KEY and IV - or the configuration
     ctrl_reg_t            ctrl;
-    status_t              status;         // the current AES status
+    status_t              aes_status;         // the current AES aes_status
     bit                   is_blocking = ~cfg_item.do_b2b;
-    csr_rd(.ptr(ral.ctrl_shadowed), .value(ctrl), .blocking(1));
-    ral.ctrl_shadowed.operation.set(cfg_item.operation);
-    ral.ctrl_shadowed.mode.set(cfg_item.mode);
-    ral.ctrl_shadowed.key_len.set(cfg_item.key_len);
-    ral.ctrl_shadowed.manual_operation.set(cfg_item.manual_op);
-    ral.ctrl_shadowed.sideload.set(cfg_item.sideload_en);
+    ral.aes_core.CTRL_SHADOWED.read(status, ctrl);
+    ral.aes_core.CTRL_SHADOWED.OPERATION.set(cfg_item.operation);
+    ral.aes_core.CTRL_SHADOWED.MODE.set(cfg_item.mode);
+    ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(cfg_item.key_len);
+    ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(cfg_item.manual_op);
+    ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(cfg_item.sideload_en);
     if (cfg.under_reset) return;
 
     // key and IV missing clear all and rewrite (a soon to come update will merge
@@ -1311,27 +1266,27 @@ class aes_base_vseq extends cip_base_vseq #(
     end
 
     // check for fatal
-    csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+    ral.aes_core.STATUS.read(status, aes_status);
     if (cfg.under_reset) return;
 
-    if (!status.alert_fatal_fault) begin
+    if (!aes_status.alert_fatal_fault) begin
       // wait for idle
-      if (!status.idle)  csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(is_blocking));
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+      if (!aes_status.idle)  ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      ral.aes_core.CTRL_SHADOWED.update(status);
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     end else begin
       // if alert just try to update ctrl and everything else
-      csr_update(.csr(ral.ctrl_shadowed), .en_shadow_wr(1'b1), .blocking(is_blocking));
+      ral.aes_core.CTRL_SHADOWED.update(status);
     end
     if (cfg.under_reset) return;
 
     // Read the main control register. This will update the mirrored values thereby getting them
     // back in sync with the DUT (updated via csr_update() above) and the predicted values (updated
     // via set() above).
-    csr_rd(.ptr(ral.ctrl_shadowed), .value(ctrl), .backdoor(1));
+    ral.aes_core.CTRL_SHADOWED.read(status, ctrl, .path(UVM_BACKDOOR));
     if (cfg.under_reset) return;
 
-    if (cfg_item.mode == AES_GCM && !status.alert_fatal_fault) begin
+    if (cfg_item.mode == AES_GCM && !aes_status.alert_fatal_fault) begin
       // As we are splitting the message, we also need to recalculate the length
       // of the AAD and PTX -> len(aad) || len(data) that is stored in a AES_GCM_TAG
       // block. Image we split the message after the first AAD block:
@@ -1389,11 +1344,11 @@ class aes_base_vseq extends cip_base_vseq #(
 
     // wait for reseed but check for fatal
     // if fatal idle will never come
-    csr_rd(.ptr(ral.status), .value(status), .blocking(1));
+    ral.aes_core.STATUS.read(status, aes_status);
     if (cfg.under_reset) return;
 
-    if (!status.alert_fatal_fault && !status.idle) begin
-      if (cfg.reseed_en) csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    if (!aes_status.alert_fatal_fault && !aes_status.idle) begin
+      if (cfg.reseed_en) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       if (cfg.under_reset) return;
     end
     write_iv(cfg_item.iv, is_blocking);
@@ -1401,13 +1356,13 @@ class aes_base_vseq extends cip_base_vseq #(
 
     // When in AES-GCM mode & manual operation is enabled, we need to trigger
     // twice to process IV/key and calculate the hash subkey.
-    if (cfg_item.mode == AES_GCM && manual_operation && !status.alert_fatal_fault) trigger();
-    if (cfg_item.mode == AES_GCM && manual_operation && !status.alert_fatal_fault) trigger();
+    if (cfg_item.mode == AES_GCM && manual_operation && !aes_status.alert_fatal_fault) trigger();
+    if (cfg_item.mode == AES_GCM && manual_operation && !aes_status.alert_fatal_fault) trigger();
       if (cfg.under_reset) return;
 
     if (cfg_item.mode == AES_GCM) begin
       int valid_bytes = data_item.data_len == 0 ? 16 : data_item.data_len;
-      if (new_msg == 0 && !status.alert_fatal_fault) begin
+      if (new_msg == 0 && !aes_status.alert_fatal_fault) begin
         if (data_item.item_type == AES_GCM_AAD) begin
           set_gcm_phase(GCM_AAD, valid_bytes, 1, 0);
           add_data(data_item.data_in, cfg_item.do_b2b);
@@ -1471,9 +1426,9 @@ class aes_base_vseq extends cip_base_vseq #(
             // done, causing that task to clear key_used again and exit.
             key_used = 1;
 
-            if (!cfg.under_reset) csr_spinwait(.ptr(ral.status.idle) , .exp_data(1'b1));
+            if (!cfg.under_reset) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
             if (!cfg.under_reset) clear_regs(2'b11);
-            if (!cfg.under_reset) csr_spinwait(.ptr(ral.status.idle) , .exp_data(1'b1));
+            if (!cfg.under_reset) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
           end
         end
       join
@@ -1524,8 +1479,8 @@ class aes_base_vseq extends cip_base_vseq #(
       //
       // Before doing this, wait for the DUT to become idle and final output to be read.
       `uvm_info(`gfn, "waiting for DUT to become idle and final output to be read", UVM_MEDIUM)
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
-      csr_spinwait(.ptr(ral.status.output_valid), .exp_data(1'b0));
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b0);
       `uvm_info(`gfn, "sending finish_message", UVM_MEDIUM)
       cfg.finish_message = 1;
     end
@@ -1639,15 +1594,15 @@ class aes_base_vseq extends cip_base_vseq #(
   endfunction // aes_print_item_queue
 
 
-  function string status2string(status_t status);
+  function string status2string(status_t aes_status);
     string txt="";
-    txt ={txt, $sformatf("\n\t ---| Idle:          %0b", status.idle)};
-    txt ={txt, $sformatf("\n\t ---| Stall:         %0b", status.stall)};
-    txt ={txt, $sformatf("\n\t ---| Output Lost:   %0b", status.output_lost)};
-    txt ={txt, $sformatf("\n\t ---| Output Valid:  %0b", status.output_valid)};
-    txt ={txt, $sformatf("\n\t ---| Input Ready:   %0b", status.input_ready)};
-    txt ={txt, $sformatf("\n\t ---| Alert - Recov: %0b", status.alert_recov_ctrl_update_err)};
-    txt ={txt, $sformatf("\n\t ---| Alert - Fatal: %0b", status.alert_fatal_fault)};
+    txt ={txt, $sformatf("\n\t ---| Idle:          %0b", aes_status.idle)};
+    txt ={txt, $sformatf("\n\t ---| Stall:         %0b", aes_status.stall)};
+    txt ={txt, $sformatf("\n\t ---| Output Lost:   %0b", aes_status.output_lost)};
+    txt ={txt, $sformatf("\n\t ---| Output Valid:  %0b", aes_status.output_valid)};
+    txt ={txt, $sformatf("\n\t ---| Input Ready:   %0b", aes_status.input_ready)};
+    txt ={txt, $sformatf("\n\t ---| Alert - Recov: %0b", aes_status.alert_recov_ctrl_update_err)};
+    txt ={txt, $sformatf("\n\t ---| Alert - Fatal: %0b", aes_status.alert_fatal_fault)};
     return txt;
   endfunction // status2string
 

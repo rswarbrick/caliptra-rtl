@@ -1,4 +1,7 @@
 ---
+# AES shared SV packages: OpenTitan aes_reg_pkg/aes_pkg, the Canright SBox
+# pkg, and the Caliptra-specific aes_clp_reg_pkg generated wrapper. Imported
+# by aes RTL and AES coverage/UVM consumers.
 provides: [aes_pkg]
 schema_version: 2.4.0
 requires:
@@ -11,15 +14,33 @@ targets:
       - $COMPILE_ROOT/rtl/aes_reg_pkg.sv
       - $COMPILE_ROOT/rtl/aes_pkg.sv
       - $COMPILE_ROOT/rtl/aes_sbox_canright_pkg.sv
-      - $COMPILE_ROOT/rtl/aes_clp_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/aes_clp_reg_pkg.sv
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/aes_reg_pkg.sv
       - $COMPILE_ROOT/rtl/aes_pkg.sv
       - $COMPILE_ROOT/rtl/aes_sbox_canright_pkg.sv
-      - $COMPILE_ROOT/rtl/aes_clp_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/aes_clp_reg_pkg.sv
 ---
+# Auto-generated UVM register-model file for the AES block (aes_clp_reg),
+# plus the per-block covergroup and sample scaffolding it includes.
+# Testbench-only.
+provides: [aes_uvm_pkg]
+schema_version: 2.4.0
+# aes_clp_reg_uvm.sv now extends dv_base_reg{,_block,_field} and imports
+# dv_base_reg_pkg::*; anchor the FuseSoC core ahead of this fileset.
+# (Compile-to-core passes through colon-bearing names verbatim — see the
+# local compile-to-core-passthrough-vlnv patch.)
+requires:
+  - lowrisc:dv:dv_base_reg
+targets:
+  tb:
+    directories: [$COMPILE_ROOT/dv/reg_model]
+    files:
+      - $COMPILE_ROOT/dv/reg_model/aes_clp_reg_uvm.sv
+---
+# Functional-coverage collateral bound onto the AES block. Testbench-only.
 provides: [aes_coverage]
 schema_version: 2.4.0
 requires:
@@ -28,17 +49,23 @@ requires:
   - kv_defines_pkg
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/aes_cov_if.sv
       - $COMPILE_ROOT/coverage/aes_cov_bind.sv
 ---
+# OpenTitan AES RTL plus the Caliptra wrapper (aes_clp_wrapper): cipher core,
+# control FSMs (positive- and negative-polarity redundant variants), SBox
+# implementations (LUT, DOM-masked, Canright, Canright-masked), key
+# expansion, mix-columns, shift-rows, GCM, CTR, and PRNGs. Top is
+# aes_clp_wrapper; tops field intentionally targets aes_cipher_core for lint.
 provides: [aes]
 schema_version: 2.4.0
 requires:
   - aes_pkg
   - kv_defines_pkg
+  - keyvault
   - caliptra_tlul_pkg
   - caliptra_top_reg_defines
 targets:
@@ -76,11 +103,11 @@ targets:
       - $COMPILE_ROOT/rtl/aes_ctrl_reg_shadowed.sv
       - $COMPILE_ROOT/rtl/aes_ghash.sv
       - $COMPILE_ROOT/rtl/aes_prng_clearing.sv
-      - $COMPILE_ROOT/rtl/aes_reduced_round.sv      
+      - $COMPILE_ROOT/rtl/aes_reduced_round.sv
       - $COMPILE_ROOT/rtl/aes_reg_status.sv
       - $COMPILE_ROOT/rtl/aes_reg_top.sv
       - $COMPILE_ROOT/rtl/aes.sv
-      - $COMPILE_ROOT/rtl/aes_clp_reg.sv
+      - $COMPILE_ROOT/rtl/generated/aes_clp_reg.sv
       - $COMPILE_ROOT/rtl/aes_clp_wrapper.sv
     tops: [aes_cipher_core]
   rtl_lint:

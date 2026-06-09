@@ -1,5 +1,8 @@
 ---
-provides: [asserts]
+# Top-level SVA bound onto caliptra_top: the caliptra_top_sva property module
+# plus the multi-IP kv_boot_flow_sva that watches the boot-time KeyVault
+# key-transfer sequence. Testbench-only, depended on by caliptra_top_tb_pkg.
+provides: [caliptra_top_asserts]
 schema_version: 2.4.0
 requires:
   - kv_defines_pkg

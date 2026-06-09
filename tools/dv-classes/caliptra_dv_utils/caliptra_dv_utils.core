@@ -1,0 +1,16 @@
+CAPI=2:
+name: "caliptra:dv:caliptra_dv_utils"
+description: "Caliptra DV utility helpers built on native UVM RAL"
+
+filesets:
+  files_dv:
+    depend:
+      - lowrisc:dv:dv_utils
+    files:
+      - caliptra_dv_utils_pkg.sv
+    file_type: systemVerilogSource
+
+targets:
+  default:
+    filesets:
+      - files_dv

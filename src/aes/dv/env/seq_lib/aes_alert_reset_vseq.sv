@@ -43,16 +43,16 @@ class aes_alert_reset_vseq extends aes_base_vseq;
               `uvm_info(`gfn, "Injecting storage error into shadowed main control register",
                   UVM_MEDIUM)
               if (!uvm_hdl_check_path(
-                  "tb.dut.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q"
+                  "tb.dut.aes_inst.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q"
                   )) begin
                 `uvm_fatal(`gfn, $sformatf("\n\t ----| PATH NOT FOUND"))
               end else begin
                 void'(uvm_hdl_force(
-                    "tb.dut.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q",
+                    "tb.dut.aes_inst.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q",
                     mal_error));
                 wait(!cfg.clk_rst_vif.rst_n);
                 void'(uvm_hdl_release(
-                    "tb.dut.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q"));
+                    "tb.dut.aes_inst.u_aes_core.u_ctrl_reg_shadowed.u_ctrl_reg_shadowed_mode.committed_q"));
               end
             end else if (cfg.alert_reset_trigger == PullReset) begin
               `uvm_info(`gfn, "Pulling reset", UVM_MEDIUM)
@@ -66,7 +66,7 @@ class aes_alert_reset_vseq extends aes_base_vseq;
                cfg.lc_escalate_vif.drive('0);
             end else if (cfg.alert_reset_trigger == AlertTest) begin
               `uvm_info(`gfn, "Writing alert test CSR", UVM_MEDIUM)
-              csr_wr(.ptr(ral.alert_test), .value(alert_test_value), .blocking(1));
+              ral.alert_test.write(status, alert_test_value);
               // Wait to see the actual alert signal. Note that the DUT doesn't block even if the
               // fatal_fault alert has been triggered.
               fork
@@ -82,7 +82,7 @@ class aes_alert_reset_vseq extends aes_base_vseq;
                 end
               join
               // Clear alert test CSR.
-              csr_wr(.ptr(ral.alert_test), .value(0), .blocking(1));
+              ral.alert_test.write(status, 0);
             end
           end
           basic: begin
@@ -95,7 +95,7 @@ class aes_alert_reset_vseq extends aes_base_vseq;
         // make sure we don't wait for a reset that never comes
         // in case the inject happened after test finished
         wait (finished_all_msgs);
-        wait_no_outstanding_access();
+        /* wait_no_outstanding_access(): no-op after csr_utils removal */;
         disable fork;
       end // fork
     join

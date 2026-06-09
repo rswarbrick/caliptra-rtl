@@ -1,4 +1,7 @@
 ---
+# SHA-256 controller RTL: generated register file, parameter package,
+# controller wrapper, top, and the SHA-256 core (round logic, W memory, K
+# constants). Also supports Winternitz signing extensions used by LMS.
 provides: [sha256_ctrl]
 schema_version: 2.4.0
 requires:
@@ -8,29 +11,30 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/sha256_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/sha256_reg_pkg.sv
       - $COMPILE_ROOT/rtl/sha256_params_pkg.sv
       - $COMPILE_ROOT/rtl/sha256_ctrl.sv
       - $COMPILE_ROOT/rtl/sha256.sv
       - $COMPILE_ROOT/rtl/sha256_core.v
       - $COMPILE_ROOT/rtl/sha256_k_constants.v
       - $COMPILE_ROOT/rtl/sha256_w_mem.v
-      - $COMPILE_ROOT/rtl/sha256_reg.sv
+      - $COMPILE_ROOT/rtl/generated/sha256_reg.sv
     tops: [sha256_ctrl]
   rtl_lint:
     directories: []
-    waiver_files: 
+    waiver_files:
       #- $COMPILE_ROOT/config/rtl_lint/sha256.waiver
       - $MSFT_REPO_ROOT/src/sha256/config/design_lint/sha256_ctrl/sglint_waivers
 ---
-provides: [sha256_ctrl_tb]  
+# Standalone testbench top for the SHA-256 controller (directed vectors).
+provides: [sha256_ctrl_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha256_ctrl
   - sha256_coverage
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/sha256_ctrl_tb.sv
@@ -44,28 +48,33 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [sha256_coverage]  
+# Functional-coverage collateral bound onto the SHA-256 controller.
+# Testbench-only.
+provides: [sha256_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha256_ctrl
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/sha256_ctrl_cov_if.sv
       - $COMPILE_ROOT/coverage/sha256_ctrl_cov_bind.sv
 ---
-provides: [sha256_random_test]  
+# Randomized testbench top for SHA-256. The pre_exec step stages the Python
+# vector generator (sha256_test_gen.py) into the run dir so the bench can
+# self-check against freshly generated vectors each run.
+provides: [sha256_random_test]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha256_ctrl
   - caliptra_top_defines
   - caliptra_top_reg_defines
   - sha256_coverage
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/sha256_random_test.sv

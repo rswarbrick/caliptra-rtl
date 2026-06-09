@@ -10,8 +10,4 @@ module aes_cov_bind;
     .idle_i (idle_o == prim_mubi_pkg::MuBi4True)
   );
 
-  bind aes  cip_lc_tx_cov_if u_lc_escalate_en_cov_if (
-    .rst_ni (rst_ni),
-    .val    (lc_escalate_en_i)
-  );
 endmodule

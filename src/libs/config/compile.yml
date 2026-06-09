@@ -1,4 +1,8 @@
 ---
+# Shared low-level building blocks used across the project: SRAM/SROM helpers,
+# AHB defines and slave interface shim, integrated clock gates, two-flop CDC
+# synchronizer, and a Verilog skid buffer. Almost every IP-block provider
+# pulls this in transitively.
 provides: [libs]
 schema_version: 2.4.0
 requires:
@@ -30,7 +34,9 @@ targets:
       - $COMPILE_ROOT/rtl/ahb_to_reg_adapter.sv
       - $COMPILE_ROOT/rtl/skidbuffer.v
 ---
-provides: [uvm_lib]
+# Vendored UVM source tree under $UVM_HOME. Owned solely by this provider so
+# parent and submodule integrations can share a single in-tree owner.
+provides: [vendor_uvm]
 schema_version: 2.4.0
 targets:
   tb:
@@ -55,10 +61,19 @@ targets:
           ius:
             - '-DXCELIUM'
 ---
-provides: [mvc_lib]
+# Thin alias over vendor_uvm so testbench providers can `requires: uvm_lib`
+# without naming the vendored source tree directly.
+provides: [uvm_lib]
 schema_version: 2.4.0
 requires:
-  - uvm_lib
+  - vendor_uvm
+targets: {}
+---
+# Vendored Questa MVC source tree under $QUESTA_MVC_HOME.
+provides: [vendor_questa_mvc]
+schema_version: 2.4.0
+requires:
+  - vendor_uvm
 targets:
   tb:
     directories:
@@ -84,19 +99,34 @@ targets:
     options:
       - +define+MAP_PROT_ATTR
 ---
+# Thin alias over vendor_questa_mvc for consumers that only need to express a
+# dependency on the Questa MVC verification IP without referencing the vendor
+# tree directly.
+provides: [mvc_lib]
+schema_version: 2.4.0
+requires:
+  - vendor_questa_mvc
+targets: {}
+---
+# ARM AMBA AXI Protocol Checker (Axi4PC) sources. Licensed third-party SVA
+# checker bound onto AXI interfaces in top-level testbenches to flag protocol
+# violations during simulation.
 provides: [axi_pc]
 schema_version: 2.4.0
 requires: []
 targets:
   tb:
     directories:
-#      - $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/sva 
-#      - $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/verilog 
+      #- $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/sva
+      #- $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/verilog
       - $MSFT_REPO_ROOT/src/libs/arm_licensed/BP063-BU-01000-r0p1-00rel0/sva
     files:
-#      - $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/sva/AxiPC.sv 
+      #- $AVERY_AXI/checker/BP062-BU-01000-r0p1-00rel0/sva/AxiPC.sv
       - $MSFT_REPO_ROOT/src/libs/arm_licensed/BP063-BU-01000-r0p1-00rel0/sva/Axi4PC.sv
 ---
+# Avery Design Systems AXI UVM verification IP. External licensed VIP rooted
+# under $AVERY_AXI / $AVERY_SIM; consumed by UVM benches that need an AXI
+# master/slave/monitor with full protocol coverage.
 provides: [avery_axi_uvm_lib]
 schema_version: 2.4.0
 requires:
@@ -105,34 +135,35 @@ requires:
 targets:
   tb:
     directories:
-      - $AVERY_AXI/src.uvm 
-      - $AVERY_AXI/testsuite/examples.uvm 
-      - $AVERY_AXI/src.axi.VCS 
-      - $AVERY_AXI/src.axi 
+      - $AVERY_AXI/src.uvm
+      - $AVERY_AXI/testsuite/examples.uvm
+      - $AVERY_AXI/src.axi.VCS
+      - $AVERY_AXI/src.axi
       - $AVERY_AXI/testbench
       - $AVERY_SIM/src
       - $AVERY_SIM/src.IEEE
       - $COMPILE_ROOT/aaxi_uvm
     files:
-      - $AVERY_SIM/src/avery_pkg.sv 
-      - $AVERY_SIM/src/avery_pkg_test.sv 
-      - $AVERY_AXI/src.axi/aaxi_pkg.sv 
-      - $AVERY_AXI/src.axi/aaxi_pkg_xactor.sv 
-      - $AVERY_AXI/src.axi/aaxi_class_pll.sv 
+      - $AVERY_SIM/src/avery_pkg.sv
+      - $AVERY_SIM/src/avery_pkg_test.sv
+      - $AVERY_AXI/src.axi/aaxi_pkg.sv
+      - $AVERY_AXI/src.axi/aaxi_pkg_xactor.sv
+      - $AVERY_AXI/src.axi/aaxi_class_pll.sv
       - $AVERY_AXI/checker/monitor_wrapper/BP063/aaxi_monitor_wrapper.sv
       - $AVERY_AXI/src.VCS/aaxi_busmonitor.v
-      - $AVERY_AXI/src.axi/aaxi_coverage_metrics.sv 
-      - $AVERY_AXI/src.axi/aaxi_pkg_test.sv 
-      - $AVERY_AXI/src.axi/aaxi_intf.sv 
-      - $AVERY_AXI/src.uvm/aaxi_uvm_pkg.sv 
-      - $AVERY_AXI/src.uvm/aaxi_uvm_test_top.sv 
+      - $AVERY_AXI/src.axi/aaxi_coverage_metrics.sv
+      - $AVERY_AXI/src.axi/aaxi_pkg_test.sv
+      - $AVERY_AXI/src.axi/aaxi_intf.sv
+      - $AVERY_AXI/src.uvm/aaxi_uvm_pkg.sv
+      - $AVERY_AXI/src.uvm/aaxi_uvm_test_top.sv
     tops: []
 ---
-provides: [uvmf_lib]
+# Vendored UVMF / Questa MGC VIP source trees under $UVMF_HOME (and the
+# $QUESTA_MVC_HOME include path UVMF expects to find on the search list).
+provides: [vendor_uvmf]
 schema_version: 2.4.0
 requires:
-  - mvc_lib
-#  - uvm_lib
+  - vendor_questa_mvc
 targets:
   tb:
     directories:
@@ -147,10 +178,6 @@ targets:
         $UVMF_HOME/common/uvm_co_emulation_utilities/uvm_co-emulation_utilities/utils/memload,
         $UVMF_HOME/common/uvm_co_emulation_utilities/uvm_co-emulation_utilities/utils/reset,
         $UVMF_HOME/uvmf_base_pkg,
-        $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/uvmf,
-        $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/config_policies,
-        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf,
-        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/config_policies,
       ]
     files:
       [
@@ -179,6 +206,27 @@ targets:
         $UVMF_HOME/common/uvm_co_emulation_utilities/uvm_co-emulation_utilities/utils/reset/reset_pkg.sv,
         $UVMF_HOME/common/uvm_co_emulation_utilities/uvm_co-emulation_utilities/utils/reset/async_reset_bfm.sv,
         $UVMF_HOME/common/uvm_co_emulation_utilities/uvm_co-emulation_utilities/utils/reset/sync_reset_bfm.sv,
+      ]
+    tops: []
+---
+# Locally-generated Questa VIP (QVIP) instances produced by UVMF for the
+# AHB-Lite slave agent (and, when uncommented, APB5). Bridges the vendored
+# UVMF/Questa MVC into the in-tree UVM testbenches.
+provides: [uvmf_lib]
+schema_version: 2.4.0
+requires:
+  - vendor_uvmf
+targets:
+  tb:
+    directories:
+      [
+        $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/uvmf,
+        $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/config_policies,
+        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf,
+        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/config_policies,
+      ]
+    files:
+      [
         $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/config_policies/qvip_ahb_lite_slave_params_pkg.sv,
         $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/uvmf/qvip_ahb_lite_slave_pkg.sv,
         $COMPILE_ROOT/uvmf/qvip_ahb_lite_slave_dir/uvmf/hdl_qvip_ahb_lite_slave.sv,
@@ -187,7 +235,7 @@ targets:
         #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/config_policies/qvip_apb5_slave_params_pkg.sv,
         #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/qvip_apb5_slave_pkg.sv,
         #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/hdl_qvip_apb5_slave.sv,
-#        $COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/default_clk_gen.sv,
-#        $COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/default_reset_gen.sv,
+        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/default_clk_gen.sv,
+        #$COMPILE_ROOT/uvmf/qvip_apb5_slave_dir/uvmf/default_reset_gen.sv,
       ]
     tops: []

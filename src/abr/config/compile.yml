@@ -1,4 +1,8 @@
 ---
+# Caliptra-side functional-coverage collateral that observes the ABR
+# (Adams-Bridge: MLDSA + ML-KEM) top integrated into Caliptra. The submodule
+# itself ships abr_coverage; this provider adds the Caliptra-integration
+# layer on top. Prefix `clp_` disambiguates from the submodule provider.
 provides: [clp_abr_coverage]
 schema_version: 2.4.0
 requires:
@@ -7,8 +11,8 @@ requires:
   - kv_defines_pkg
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/clp_abr_top_cov_if.sv
-      - $COMPILE_ROOT/coverage/clp_abr_top_cov_bind.sv       
+      - $COMPILE_ROOT/coverage/clp_abr_top_cov_bind.sv

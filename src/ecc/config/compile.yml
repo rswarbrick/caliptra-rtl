@@ -4,6 +4,10 @@
 # https://dev.azure.com/ms-tsd/Ether/_git/sim-tools?path=%2FSourceFileSpec.docx&version=GBmaster
 
 ---
+# ECC/ECDSA RTL: generated register file, defines/params/uop packages, DSA
+# controller and sequencer, scalar blinding, HMAC-DRBG handshake, arithmetic
+# unit and Montgomery multiplier (PE array), TDP RAM file, FAU, and the
+# ecc_top integration module. Implements P-384 ECDSA sign/verify/keygen.
 provides: [ecc_top]
 schema_version: 2.4.0
 requires:
@@ -13,13 +17,13 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/ecc_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/ecc_reg_pkg.sv
       - $COMPILE_ROOT/rtl/ecc_defines_pkg.sv
       - $COMPILE_ROOT/rtl/ecc_params_pkg.sv
       - $COMPILE_ROOT/rtl/ecc_dsa_uop_pkg.sv
       - $COMPILE_ROOT/rtl/ecc_pm_uop_pkg.sv
       - $COMPILE_ROOT/rtl/ecc_top.sv
-      - $COMPILE_ROOT/rtl/ecc_reg.sv
+      - $COMPILE_ROOT/rtl/generated/ecc_reg.sv
       - $COMPILE_ROOT/rtl/ecc_dsa_ctrl.sv
       - $COMPILE_ROOT/rtl/ecc_dsa_sequencer.sv
       - $COMPILE_ROOT/rtl/ecc_scalar_blinding.sv
@@ -42,9 +46,10 @@ targets:
     waiver_files:
       - $MSFT_REPO_ROOT/src/ecc/config/design_lint/ecc_top/sglint_waivers
 ---
-provides: [ecc_top_tb]  
+# Standalone testbench top for ecc_top.
+provides: [ecc_top_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - ecc_top
   - keyvault
   - caliptra_top_defines
@@ -52,7 +57,7 @@ requires:
   - ecc_coverage
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/ecc_top_tb.sv
@@ -66,13 +71,15 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [ecc_montgomerymultiplier_tb]  
+# Focused testbench for the Montgomery multiplier alone. The pre_exec step
+# stages pre-generated MM test vectors into the run dir.
+provides: [ecc_montgomerymultiplier_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - ecc_top
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/ecc_montgomerymultiplier_tb.sv
@@ -88,13 +95,14 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [ecc_coverage]  
+# Functional-coverage collateral bound onto ecc_top. Testbench-only.
+provides: [ecc_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - ecc_top
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/ecc_top_cov_if.sv

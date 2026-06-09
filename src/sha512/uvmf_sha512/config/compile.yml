@@ -1,4 +1,8 @@
 ---
+# UVMF-generated UVM testbench for sha512_ctrl: SHA512_in/out interface
+# packages, environment package, parameters/sequences/tests, and the
+# hdl_top/hvl_top tops. The pre_exec copies NIST CAVP SHA*.rsp vector files
+# into the run dir for self-checking.
 provides: [uvmf_sha512]
 schema_version: 2.4.0
 requires:
