@@ -4,8 +4,8 @@
 //
 // coverage object for a fixed width mubi
 class mubi_cov #(parameter int Width = 4,
-                 parameter int unsigned ValueTrue = prim_mubi_pkg::MuBi4True,
-                 parameter int unsigned ValueFalse = prim_mubi_pkg::MuBi4False) extends uvm_object;
+                 parameter int unsigned ValueTrue = MuBi4True,
+                 parameter int unsigned ValueFalse = MuBi4False) extends uvm_object;
   `uvm_object_param_utils(mubi_cov #(Width, ValueTrue, ValueFalse))
 
   // Collect true, false and at least N other values (N = Width)
@@ -43,10 +43,9 @@ class mubi32_cov extends uvm_object;
     option.name         = name;
 
     cp_value: coverpoint value {
-      bins true = {prim_mubi_pkg::MuBi32True};
-      bins false = {prim_mubi_pkg::MuBi32False};
-      bins others[32] = {[0:{32{1'b1}}]} with (!(item inside {prim_mubi_pkg::MuBi32True,
-                                                              prim_mubi_pkg::MuBi32False}));
+      bins true = {MuBi32True};
+      bins false = {MuBi32False};
+      bins others[32] = {[0:{32{1'b1}}]} with (!(item inside {MuBi32True, MuBi32False}));
     }
   endgroup : mubi_cg
 
@@ -61,26 +60,26 @@ class mubi32_cov extends uvm_object;
 endclass
 
 typedef mubi_cov #(.Width(4),
-                   .ValueTrue(prim_mubi_pkg::MuBi4True),
-                   .ValueFalse(prim_mubi_pkg::MuBi4False)) mubi4_cov;
+                   .ValueTrue(MuBi4True),
+                   .ValueFalse(MuBi4False)) mubi4_cov;
 typedef mubi_cov #(.Width(8),
-                   .ValueTrue(prim_mubi_pkg::MuBi8True),
-                   .ValueFalse(prim_mubi_pkg::MuBi8False)) mubi8_cov;
+                   .ValueTrue(MuBi8True),
+                   .ValueFalse(MuBi8False)) mubi8_cov;
 typedef mubi_cov #(.Width(12),
-                   .ValueTrue(prim_mubi_pkg::MuBi12True),
-                   .ValueFalse(prim_mubi_pkg::MuBi12False)) mubi12_cov;
+                   .ValueTrue(MuBi12True),
+                   .ValueFalse(MuBi12False)) mubi12_cov;
 typedef mubi_cov #(.Width(16),
-                   .ValueTrue(prim_mubi_pkg::MuBi16True),
-                   .ValueFalse(prim_mubi_pkg::MuBi16False)) mubi16_cov;
+                   .ValueTrue(MuBi16True),
+                   .ValueFalse(MuBi16False)) mubi16_cov;
 typedef mubi_cov #(.Width(20),
-                   .ValueTrue(prim_mubi_pkg::MuBi20True),
-                   .ValueFalse(prim_mubi_pkg::MuBi20False)) mubi20_cov;
+                   .ValueTrue(MuBi20True),
+                   .ValueFalse(MuBi20False)) mubi20_cov;
 typedef mubi_cov #(.Width(24),
-                   .ValueTrue(prim_mubi_pkg::MuBi24True),
-                   .ValueFalse(prim_mubi_pkg::MuBi24False)) mubi24_cov;
+                   .ValueTrue(MuBi24True),
+                   .ValueFalse(MuBi24False)) mubi24_cov;
 typedef mubi_cov #(.Width(28),
-                   .ValueTrue(prim_mubi_pkg::MuBi28True),
-                   .ValueFalse(prim_mubi_pkg::MuBi28False)) mubi28_cov;
+                   .ValueTrue(MuBi28True),
+                   .ValueFalse(MuBi28False)) mubi28_cov;
 
 // a mubi coverage object, which allows to dynamically select the width of mubi
 class dv_base_mubi_cov extends uvm_object;

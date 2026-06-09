@@ -1,0 +1,23 @@
+CAPI=2:
+# Copyright lowRISC contributors (OpenTitan project).
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:dv_base_mubi"
+description: "DV code for mubi signals"
+
+filesets:
+  files_dv:
+    depend:
+      - lowrisc:prim:mubi_pkg
+      - lowrisc:dv:dv_macros
+    files:
+      - dv_mubi_macros.svh: {is_include_file: true}
+      - dv_base_mubi_pkg.sv
+      - dv_base_mubi_cov.sv: {is_include_file: true}
+      - mubi_cov_if.sv
+    file_type: systemVerilogSource
+
+targets:
+  default:
+    filesets:
+      - files_dv

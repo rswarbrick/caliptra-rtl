@@ -9,6 +9,7 @@ filesets:
   files_dv:
     depend:
       - lowrisc:dv:dv_utils
+      - lowrisc:dv:dv_base_mubi
       - lowrisc:prim:mubi_pkg
     files:
       - dv_base_reg_pkg.sv
@@ -20,7 +21,6 @@ filesets:
       - dv_base_reg_map.sv: {is_include_file: true}
       - dv_base_lockable_field_cov.sv: {is_include_file: true}
       - dv_base_shadowed_field_cov.sv: {is_include_file: true}
-      - dv_base_mubi_cov.sv: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:

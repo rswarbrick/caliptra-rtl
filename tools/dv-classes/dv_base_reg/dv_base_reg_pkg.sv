@@ -6,6 +6,7 @@ package dv_base_reg_pkg;
   // dep packages
   import uvm_pkg::*;
   import dv_utils_pkg::*;
+  import dv_base_mubi_pkg::dv_base_mubi_cov;
 
   // macro includes
   `include "uvm_macros.svh"
@@ -135,7 +136,6 @@ package dv_base_reg_pkg;
   `include "csr_excl_item.sv"
   `include "dv_base_lockable_field_cov.sv"
   `include "dv_base_shadowed_field_cov.sv"
-  `include "dv_base_mubi_cov.sv"
   `include "dv_base_reg_field.sv"
   `include "dv_base_reg.sv"
   `include "dv_base_mem.sv"
