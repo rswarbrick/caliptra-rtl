@@ -1,11 +1,14 @@
+# SV package of PCRVault interface types/parameters, plus the shared
+# pv_gen_hash extender helper. Imported by pcrvault RTL and by clients that
+# write PCR entries (HMAC, SHA, etc.).
 provides: [pv_defines_pkg]
 schema_version: 2.4.0
-requires: 
+requires:
   - libs
 targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
-    files: 
+    files:
       - $COMPILE_ROOT/rtl/pv_defines_pkg.sv
       - $COMPILE_ROOT/rtl/pv_gen_hash.sv
   tb:
@@ -14,15 +17,18 @@ targets:
       - $COMPILE_ROOT/rtl/pv_defines_pkg.sv
       - $COMPILE_ROOT/rtl/pv_gen_hash.sv
 ---
+# Auto-generated UVM register-model file for the PCRVault. Testbench-only.
 provides: [pv_uvm_pkg]
 schema_version: 2.4.0
 targets:
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/pv_reg_uvm.sv
+      - $COMPILE_ROOT/dv/reg_model/pv_reg_uvm.sv
 ---
-provides: [pcrvault_cov]
+# Functional-coverage collateral bound onto the PCRVault: cover interface,
+# properties, and bind module. Testbench-only.
+provides: [pcrvault_coverage]
 schema_version: 2.4.0
 requires:
   - pv_defines_pkg
@@ -35,6 +41,8 @@ targets:
       - $COMPILE_ROOT/coverage/pcrvault_cov_props.sv
       - $COMPILE_ROOT/coverage/pcrvault_cov_bind.sv
 ---
+# PCRVault RTL: generated register file plus the `pv` top module. Stores PCR
+# values that are extended (rather than directly written) by hashing IPs.
 provides: [pcrvault]
 schema_version: 2.4.0
 requires:
@@ -45,9 +53,8 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/pv_reg_pkg.sv
-      - $COMPILE_ROOT/rtl/pv_reg.sv
-      - $COMPILE_ROOT/rtl/pv_defines_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/pv_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/pv_reg.sv
       - $COMPILE_ROOT/rtl/pv.sv
     tops: [pv]
   rtl_lint:

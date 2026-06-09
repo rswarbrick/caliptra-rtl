@@ -1,25 +1,32 @@
+# SV package of KeyVault interface types/parameters. Imported by keyvault
+# RTL and by every IP that reads/writes the KeyVault (HMAC, ECC, AES, DOE,
+# AXI DMA, SHA, etc.).
 provides: [kv_defines_pkg]
 schema_version: 2.4.0
 requires: []
 targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
-    files: 
+    files:
       - $COMPILE_ROOT/rtl/kv_defines_pkg.sv
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/kv_defines_pkg.sv
 ---
+# Auto-generated UVM register-model file for the KeyVault. Testbench-only.
 provides: [kv_uvm_pkg]
 schema_version: 2.4.0
 targets:
   tb:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/kv_reg_uvm.sv
+      - $COMPILE_ROOT/dv/reg_model/kv_reg_uvm.sv
 ---
-provides: [keyvault_cov]
+# Functional-coverage collateral bound onto the KeyVault: cover interface,
+# properties, bind module, plus the kv_boot_flow cover module that observes
+# the multi-IP boot-time key transfer sequence.
+provides: [keyvault_coverage]
 schema_version: 2.4.0
 requires:
   - caliptra_prim_pkg
@@ -34,9 +41,12 @@ targets:
       - $COMPILE_ROOT/coverage/kv_boot_flow_cov.sv
       - $COMPILE_ROOT/coverage/keyvault_cov_bind.sv
 ---
+# KeyVault RTL: generated register file, FSM, read/write clients and
+# rule-check enforcement, plus the `kv` top. The KeyVault stores secrets
+# with per-slot read/write/usage rules controlling which IPs may access them.
 provides: [keyvault]
 schema_version: 2.4.0
-requires: 
+requires:
   - libs
   - caliptra_prim
   - kv_defines_pkg
@@ -44,9 +54,8 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/kv_reg_pkg.sv
-      - $COMPILE_ROOT/rtl/kv_reg.sv
-      - $COMPILE_ROOT/rtl/kv_defines_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/kv_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/kv_reg.sv
       - $COMPILE_ROOT/rtl/kv.sv
       - $COMPILE_ROOT/rtl/kv_fsm.sv
       - $COMPILE_ROOT/rtl/kv_read_client.sv

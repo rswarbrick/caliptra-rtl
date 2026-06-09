@@ -87,8 +87,8 @@ interface fi_cipher_if
     bit  read;
     bit  value;
     $assertoff(0, "tb.dut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
     if (!uvm_hdl_check_path(intf_array[target])) begin
       `uvm_fatal("fi_cipher_if", $sformatf("PATH NOT EXISTING %m"))
     end
@@ -148,8 +148,8 @@ interface fi_cipher_if
 
     bit [31:0] read;
     $assertoff(0, "tb.dut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
     `uvm_info("if_cipher_if",
        $sformatf(" I am forcing target %d %s, \n value: %0h",
                   target, intf_mul_array[target], value),UVM_LOW);

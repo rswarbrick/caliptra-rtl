@@ -44,14 +44,14 @@ class aes_readability_vseq extends aes_base_vseq;
 
     setup_dut(cfg_item);
     foreach (cfg_item.key[0][idx]) begin
-      csr_wr(.ptr(ral.key_share0[idx]), .value(cfg_item.key[0][idx]), .blocking(1));
-      csr_wr(.ptr(ral.key_share1[idx]), .value(cfg_item.key[1][idx]), .blocking(1));
+      ral.aes_core.KEY_SHARE0[idx].write(status, cfg_item.key[0][idx]);
+      ral.aes_core.KEY_SHARE1[idx].write(status, cfg_item.key[1][idx]);
     end
 
 
     foreach (cfg_item.key[0][idx]) begin
-      csr_rd(.ptr(ral.key_share0[idx]), .value(check_item.key[0][idx]), .blocking(1));
-      csr_rd(.ptr(ral.key_share1[idx]), .value(check_item.key[1][idx]), .blocking(1));
+      ral.aes_core.KEY_SHARE0[idx].read(status, check_item.key[0][idx]);
+      ral.aes_core.KEY_SHARE1[idx].read(status, check_item.key[1][idx]);
       if ((cfg_item.key[0][idx] == check_item.key[0][idx]) ||
           (cfg_item.key[1][idx] == check_item.key[1][idx])) begin
               `uvm_fatal(`gfn, $sformatf("----| Key reg was Readable |-----"))
@@ -61,7 +61,7 @@ class aes_readability_vseq extends aes_base_vseq;
     // check read data //
     add_data(data_item.data_in, cfg_item.do_b2b);
     foreach (data_item.data_in[idx]) begin
-      csr_rd(.ptr(ral.data_in[idx]), .value(check_item.data_in[idx]), .blocking(1));
+      ral.aes_core.DATA_IN[idx].read(status, check_item.data_in[idx]);
       if ( data_item.data_in[idx] == check_item.data_in[idx] ) begin
               `uvm_fatal(`gfn, $sformatf("----|Write data reg was Readable |----"))
       end
@@ -70,17 +70,17 @@ class aes_readability_vseq extends aes_base_vseq;
 
     // read output regs before clear
      foreach (data_item.data_out[idx]) begin
-      csr_rd(.ptr(ral.data_out[idx]), .value(data_item.data_out[idx]), .blocking(1));
+      ral.aes_core.DATA_OUT[idx].read(status, data_item.data_out[idx]);
      end
     // read IV before clear
      foreach (data_item.iv[idx]) begin
-      csr_rd(.ptr(ral.iv[idx]), .value(data_item.iv[idx]), .blocking(1));
+      ral.aes_core.IV[idx].read(status, data_item.iv[idx]);
      end
 
 
     // clear regs
     clear_regs(2'b11);
-    csr_spinwait(.ptr(ral.status.idle) , .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
 
 
     success &= uvm_hdl_read("tb.dut.u_reg.hw2reg.data_in[0]", check_item.data_in[0]);
@@ -116,7 +116,7 @@ class aes_readability_vseq extends aes_base_vseq;
     end
 
     foreach (data_item.data_out[idx]) begin
-      csr_rd(.ptr(ral.data_out[idx]), .value(check_item.data_out[idx]), .blocking(1));
+      ral.aes_core.DATA_OUT[idx].read(status, check_item.data_out[idx]);
       if (data_item.data_out[idx] == check_item.data_out[idx] ) begin
         `uvm_fatal(`gfn, $sformatf("----| data out reg was not cleared |---- %s", str))
       end
@@ -124,7 +124,7 @@ class aes_readability_vseq extends aes_base_vseq;
 
     // check IV
     foreach (data_item.iv[idx]) begin
-      csr_rd(.ptr(ral.iv[idx]), .value(check_item.iv[idx]), .blocking(1));
+      ral.aes_core.IV[idx].read(status, check_item.iv[idx]);
       if (data_item.iv[idx] == check_item.iv[idx] ) begin
         `uvm_fatal(`gfn, $sformatf("----| IV reg was not cleared |---- %s", str))
       end

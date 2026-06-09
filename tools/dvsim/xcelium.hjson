@@ -45,6 +45,10 @@
                "-nowarn REVRNG",
                // Ignore warning "Include directory <path> given but not used". This is benign.
                "-nowarn SPDUSD",
+               // Ignore "cds.lib Invalid path ... command ignored" warnings emitted by Xcelium's
+               // bundled cdsvhdl.lib referencing VHDL library directories that don't exist in the
+               // install. Benign for SV-only flows.
+               "-nowarn DLCPTH",
                // This warning is thrown when a scalar enum variable is assigned to an enum array.
                // Other tools (e.g., FPV) treat such assignments as an error, hence we bump it to
                // an error in simulation so that this can be caught early in CI.
@@ -73,6 +77,10 @@
                "{uvm_testseq_plusarg}",
                // Ignore "IEEE 1800-2009 SystemVerilog simulation semantics" warning
                "-nowarn DSEM2009",
+               // Ignore "cds.lib Invalid path ... command ignored" warnings emitted by Xcelium's
+               // bundled cdsvhdl.lib referencing VHDL library directories that don't exist in the
+               // install. Benign for SV-only flows.
+               "-nowarn DLCPTH",
                ]
 
   // Vars that need to exported to the env.

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-# 
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,87 +11,184 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
-import sys
+"""Post-processing scrubs for ``peakrdl-regblock`` SystemVerilog output.
+
+Every transform in this module is a workaround for a specific
+peakrdl-regblock quirk: the generated RTL is *almost* what Caliptra
+needs, but a handful of structural choices have to be patched up
+before downstream tools (Verilator, Cadence xmvlog, lint, synthesis)
+accept them.
+
+Generic improvements that are *not* upstream workarounds (e.g. the
+``CALIPTRA_ASSERT_KNOWN`` injection on ``hwif_in``) live in their own
+modules - see :mod:`inject_hwif_assertion`.
+
+Two entry points are exposed and consumed by ``tools/scripts/reg_gen.py``
+(and the adams-bridge submodule's equivalent):
+
+* :func:`scrub_line_by_line` - applied to ``{module}.sv`` and
+  ``{module}_pkg.sv``.  Runs each callable in :data:`FIXES` against
+  every declaration line.
+* :func:`strip_trailing_whitespace` - applied to all three generated
+  file types (``.sv``, ``_pkg.sv``, ``_uvm.sv``) as defence in depth
+  against template/whitespace regressions.
+
+Each upstream-quirk fix is implemented as a standalone callable in
+:data:`FIXES` with a docstring stating *what* the generator emits,
+*why* it must be rewritten, and *the condition under which the fix
+can be deleted* (typically: a future peakrdl-regblock release).  If
+upstream lands the fix, drop the corresponding entry from
+:data:`FIXES` (and delete its function).
+
+Currently targets peakrdl-regblock 1.3.1.
+"""
+
 import os
 import re
+import sys
+from typing import Callable, List, Union
 
-def scrub_line_by_line(fname):
+PathLike = Union[str, os.PathLike]
 
-    # Open file
-    rhandle = open(fname, "r+")
-    mod_cnt = 0
-    mod_lines = ""
 
-    found_hard_reset = None
+# ---------------------------------------------------------------------------
+# Whitespace scrub (not tied to a specific peakrdl-regblock bug)
+# ---------------------------------------------------------------------------
 
-    # Line by line manipulation
-    # Look for unpacked arrays (could be struct arrays or signal arrays)
-    # Look for unpacked struct types
-    # NOTE: Will not detect unpacked arrays where the array identifier
-    #       and dimensions are on separate lines
-    for line in rhandle:
-        has_assign = re.search(r'\bassign\b', line)
-        has_reg_strb = re.search(r'\bdecoded_reg_strb\b', line)
-        has_unpacked = re.search(r'\[\d+\]', line)
-        has_struct = re.search(r'\bstruct\b\s*(?:unpacked)?', line)
-        is_endmodule = re.search(r'\bendmodule\b', line)
-        has_reset = re.search(r'\bnegedge\b', line)
-        has_enum = re.search(r'\btypedef enum\b', line)
-        if (has_reset is not None and found_hard_reset is None):
-            substring = re.search(r"negedge (\w+.\w+)", line)
-            reset_name = substring.group(1)
-            # Find the hard reset if it exists
-            # hard_reset_b, error_reset_b and cptra_pwrgood are used interchangeably
-            found_hard_reset = re.search(r'hard_reset|pwrgood|error_reset',reset_name)
-        # Skip lines with logic assignments or references to signals; we
-        # only want to scrub signal definitions for unpacked arrays
-        if (has_assign is not None or has_reg_strb is not None):
-            mod_lines+=line
-        elif (has_enum is not None):
-            line = re.sub('enum', 'enum logic [31:0]', line)
-            mod_lines+=line
-            mod_cnt+=1
-        elif (has_struct is not None):
-            line = re.sub(r'(\bstruct\b)\s*(?:unpacked)?', r'\1 packed', line)
-            mod_lines+=line
-            mod_cnt+=1
-        elif (has_unpacked is not None):
-            while(has_unpacked is not None):
-                #               whitespace
-                #               |    existing dimensions (packed)
-                #               |    |              identifier
-                #               |    |              |          unpacked dimensions (ignore this iteration)
-                #               |___ |____________  |______    |_______    unpacked dimension to modify
-                #               |   \|            \ |      \   |       \   |
-                line = re.sub(r'(\s*)(\[[\w-]+:0\])*(\s*\w+)\s*(\[\d+\])*\[(\d+)\]', r'\1[\5-1:0]\2\3\4', line)
-                has_unpacked = re.search(r'\[\d+\]', line)
-            mod_lines+=line
-            mod_cnt+=1
-        elif (is_endmodule is not None):
-            mod_lines+="\n"
-            mod_lines+='`include "caliptra_prim_assert.sv"\n'
-            mod_lines+="`CALIPTRA_ASSERT_KNOWN(ERR_HWIF_IN, hwif_in, clk, !" + reset_name + ")\n"
-            mod_lines+="\n"
-            mod_lines+=line
-        else:
-            mod_lines+=line
-    #print(f"modified {mod_cnt} lines with unpacked arrays in {fname}")
+def strip_trailing_whitespace(fname: PathLike) -> None:
+    """Strip trailing whitespace from every line of *fname*, in place.
 
-    # Close file for reading, reopen to write modified contents
-    rhandle.close()
-    whandle = open(fname, "w")
-    whandle.write(mod_lines)
-    whandle.close()
+    Safe to keep indefinitely; not a workaround for any upstream bug.
+    """
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    stripped = [line.rstrip() + '\n' for line in lines]
+    with open(fname, 'w') as f:
+        f.writelines(stripped)
+
+
+# ---------------------------------------------------------------------------
+# Per-line upstream-quirk fixes
+#
+# Each function takes a single source line and returns the (possibly
+# rewritten) line.  Functions are pure transforms and do not need
+# cross-line state; cross-line state (e.g. reset-signal capture, end-
+# of-module assertion insertion) is handled separately below.
+#
+# Each fix is independently removable: when the corresponding
+# upstream behaviour is fixed, delete the function and remove its
+# entry from FIXES.
+# ---------------------------------------------------------------------------
+
+# Matches `struct` optionally followed by `unpacked`.
+_STRUCT_RE = re.compile(r'\bstruct\b\s*(?:unpacked)?')
+
+# Matches a constant unpacked dimension, e.g. `[2]`.
+_UNPACKED_DIM_RE = re.compile(r'\[\d+\]')
+
+# Peels:
+#   (whitespace)(existing packed dims)(identifier)(already-rewritten unpacked dims)[N]
+# and folds the trailing [N] into a packed [N-1:0] on the left of the identifier.
+_UNPACKED_TO_PACKED_RE = re.compile(
+    r'(\s*)(\[[\w-]+:0\])*(\s*\w+)\s*(\[\d+\])*\[(\d+)\]'
+)
+
+
+def fix_unpacked_struct(line: str) -> str:
+    """Force ``struct`` declarations to be packed.
+
+    peakrdl-regblock emits bare ``struct { ... }`` declarations.  In
+    SystemVerilog a bare ``struct`` is **unpacked by default**, which
+    means it cannot be bit-sliced, used as a port, or assigned with
+    bitwise operators - none of which Caliptra's downstream flows
+    tolerate.  Rewrite both ``struct`` and the (rarer) explicit
+    ``struct unpacked`` to ``struct packed``.
+
+    Remove when: peakrdl-regblock emits ``struct packed`` directly
+    (or exposes a knob to do so).  As of 1.3.1 this still fires
+    thousands of times per regeneration, so the fix is load-bearing.
+    """
+    if _STRUCT_RE.search(line) is None:
+        return line
+    return _STRUCT_RE.sub(r'struct packed', line)
+
+
+def fix_unpacked_array_dim(line: str) -> str:
+    """Convert unpacked array dimensions on declarations to packed.
+
+    peakrdl-regblock writes signal/struct declarations as e.g.::
+
+        logic NAME[2];
+
+    which is an *unpacked* array.  Caliptra's tools require these to
+    be packed::
+
+        logic [2-1:0]NAME;
+
+    The regex peels any existing packed dimensions, the identifier,
+    and any already-rewritten unpacked dimensions, then folds the
+    trailing ``[N]`` into a packed ``[N-1:0]`` on the left of the
+    identifier.  A loop handles multi-dimensional cases.
+
+    **Declarations only.**  Procedural single-bit selects such as::
+
+        readback_data_var[0] = field_storage.CTRL0.ENDIAN_SWAP.value;
+
+    must *not* be rewritten - doing so produces malformed
+    declarations with initialisers and trips xmvlog's ``VARIST``
+    warning.
+
+    Known limitation: arrays whose identifier and dimensions are on
+    separate lines are not detected.
+
+    Remove when: peakrdl-regblock emits packed dimensions directly
+    (or exposes a knob to do so).
+    """
+    if _UNPACKED_DIM_RE.search(line) is None:
+        return line
+    while _UNPACKED_DIM_RE.search(line) is not None:
+        line = _UNPACKED_TO_PACKED_RE.sub(r'\1[\5-1:0]\2\3\4', line)
+    return line
+
+
+# The ordered list of per-line fixes applied to declaration lines.
+# Drop entries from here as upstream issues are fixed.
+FIXES: List[Callable[[str], str]] = [
+    fix_unpacked_struct,
+    fix_unpacked_array_dim,
+]
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+def scrub_line_by_line(fname: PathLike) -> None:
+    """Apply every per-line peakrdl-regblock workaround to *fname* in place.
+
+    Runs each callable in :data:`FIXES` against every *declaration*
+    line (lines without an ``=`` operator); procedural assignments are
+    passed through untouched - see :func:`fix_unpacked_array_dim`.
+    """
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+
+    out: List[str] = []
+    for line in lines:
+        if '=' not in line:
+            for fix in FIXES:
+                line = fix(line)
+        out.append(line)
+
+    with open(fname, 'w') as f:
+        f.writelines(out)
+
 
 if __name__ == "__main__":
-    # Get filename to scrub from arguments
-    if (len(sys.argv) == 1):
+    if len(sys.argv) == 1:
         print(f"{os.path.basename(sys.argv[0])} requires an argument to specify target file!")
-    else:
-        fname = sys.argv[1]
-        print(f"file name to modify is {fname}")
-
-    # Convert Unpacked Arrays/structs to Packed
+        sys.exit(1)
+    fname = sys.argv[1]
+    print(f"file name to modify is {fname}")
     scrub_line_by_line(fname)

@@ -1,4 +1,7 @@
 ---
+# Technology-generic implementations of the caliptra_prim primitive cells
+# (flops, buffers, RAMs, gates, clock muxes/inverters). Substituted out for
+# foundry-specific cells in synthesis; used as-is for simulation.
 provides: [caliptra_prim_generic]
 schema_version: 2.4.0
 requires:

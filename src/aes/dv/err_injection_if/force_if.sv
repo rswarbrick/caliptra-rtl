@@ -17,8 +17,8 @@ interface force_if
 
   function static void force_state(bit [SignalWidth-1:0] state);
     $assertoff(0, "tb.dut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
 
     //VCS coverage off
     // pragma coverage off

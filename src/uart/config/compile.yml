@@ -1,4 +1,6 @@
 ---
+# OpenTitan UART RTL: reg pkg, reg top, tx/rx serialisers, core, and the
+# uart top. Used by Caliptra for early-boot/firmware debug output.
 provides: [uart]
 schema_version: 2.4.0
 requires:
@@ -21,6 +23,7 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/uart_reg_pkg.sv
 ---
+# Standalone testbench top for the UART.
 provides: [uart_tb]
 schema_version: 2.4.0
 requires:

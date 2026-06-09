@@ -17,7 +17,7 @@ class aes_deinit_vseq extends aes_base_vseq;
   bit                back2back = 0;
   clear_t            clear     = 2'b00;
   string             txt ="";
-  status_t           status;
+  status_t           aes_status;
 
   task body();
     `uvm_info(`gfn, $sformatf("\n\n\t ----| STARTING AES DE-INIT SEQUENCE |----\n %s",
@@ -56,7 +56,7 @@ class aes_deinit_vseq extends aes_base_vseq;
       // clear the output registers
       clear.dataout = 1'b1;
       clear_regs(clear);
-      csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       read_data(data, back2back);
 
       if ((data == prev_data) || (data == 32'h00000000)) begin
@@ -73,7 +73,7 @@ class aes_deinit_vseq extends aes_base_vseq;
     // now clear key/iv/data and try to manually trigger an operation
     clear.key_iv_data_in = 1'b1;
     clear_regs(clear);
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     // make sure that IV was cleared
     read_iv(data, back2back);
 
@@ -86,10 +86,10 @@ class aes_deinit_vseq extends aes_base_vseq;
 
     // make sure we cant trigger an operation
     trigger();
-    csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
+    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
     for (int nn = 0; nn <10; nn++) begin
-        csr_rd(.ptr(ral.status), .value(status), .blocking(1));
-        if ((!status.idle && !status.alert_fatal_fault) || status.output_valid)
+        ral.aes_core.STATUS.read(status, aes_status);
+        if ((!aes_status.idle && !aes_status.alert_fatal_fault) || aes_status.output_valid)
           `uvm_fatal(`gfn, $sformatf("WAS ABLE TO TRIGGER OPERATION AFTER CLEAR MODE"))
 
         cfg.clk_rst_vif.wait_clks(25);

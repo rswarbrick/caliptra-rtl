@@ -15,7 +15,14 @@
 
     {
       name: xcelium_aes_model_build_opts
-      build_opts: ["-I{build_dir}/fusesoc-work/src/{aes_model_src_dir}", "-lcrypto"]
+      // On NixOS xmsc's bundled gcc doesn't see openssl on a system path; OPENSSL_INCLUDE_DIR /
+      // OPENSSL_LIB_DIR are exported by the caliptra-dvsim devshell. On distros with openssl-dev
+      // installed system-wide these env vars are empty and the `-I`/`-L` flags expand to bare
+      // `-I/include` / `-L/lib` which gcc ignores harmlessly.
+      build_opts: ["-I{build_dir}/fusesoc-work/src/{aes_model_src_dir}",
+                   "{eval_cmd} echo \"-I$OPENSSL_INCLUDE_DIR\"",
+                   "{eval_cmd} echo \"-L$OPENSSL_LIB_DIR\"",
+                   "-lcrypto"]
     }
   ]
 }

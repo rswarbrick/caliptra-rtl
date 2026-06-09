@@ -1,4 +1,8 @@
 ---
+# UVMF-generated UVM testbench for hmac_ctrl: HMAC_in/out interface packages,
+# environment package, parameters/sequences/tests, and the hdl_top/hvl_top
+# tops. The pre_exec stages the HMAC test-vector generator script into the
+# run dir. (`uvmf_2022` denotes the UVMF generator release used.)
 provides: [uvmf_hmac]
 schema_version: 2.4.0
 requires:

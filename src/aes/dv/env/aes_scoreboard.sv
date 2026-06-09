@@ -5,11 +5,9 @@
 import aes_model_dpi_pkg::*;
 import aes_pkg::*;
 
-class aes_scoreboard extends cip_base_scoreboard #(
-  .CFG_T(aes_env_cfg),
-  .RAL_T(aes_reg_block),
-  .COV_T(aes_env_cov)
-  );
+class aes_scoreboard extends dv_base_scoreboard #(.CFG_T(aes_env_cfg),
+                                                  .RAL_T(aes_clp_reg),
+                                                  .COV_T(aes_env_cov));
 
   `uvm_component_utils(aes_scoreboard)
   `uvm_component_new
@@ -23,8 +21,7 @@ class aes_scoreboard extends cip_base_scoreboard #(
   bit          ok_to_fwd          = 0;        // 0: item is not ready to forward
   bit          reset_rebuilding   = 0;        // reset message rebuilding task
   bit          exp_clear          = 0;        // if using sideload - we are expecting a clear
-  keymgr_pkg::hw_key_req_t sideload_key = 0;  // will hold the key from sideload
-  uvm_tlm_analysis_fifo #(key_sideload_item)  key_manager_fifo;
+
   bit [3:0]    datain_rdy         = '0;       // indicate if DATA_IN can be updated
 
   virtual      aes_cov_if   cov_if;           // handle to aes coverage interface
@@ -42,7 +39,6 @@ class aes_scoreboard extends cip_base_scoreboard #(
     super.build_phase(phase);
     msg_fifo         = new();
     item_fifo        = new();
-    key_manager_fifo = new("keymgr_analysis_fifo");
     input_item       = new("input_item");
     key_item         = new("key_item");
     output_item      = new ();
@@ -61,24 +57,22 @@ class aes_scoreboard extends cip_base_scoreboard #(
   task run_phase(uvm_phase phase);
     // disable check as we don't
     // know when the alert will happen
-    do_alert_check = 0;
     super.run_phase(phase);
     if (cfg.en_scb) begin
       fork
         compare();
-        process_sideload_key();
         rebuild_message();
       join_none
     end
   endtask
 
   function void on_ctrl_shadowed_write(logic [31:0] wdata);
-    input_item.manual_op   = get_field_val(ral.ctrl_shadowed.manual_operation, wdata);
-    input_item.key_len     = get_field_val(ral.ctrl_shadowed.key_len, wdata);
-    input_item.sideload_en = get_field_val(ral.ctrl_shadowed.sideload, wdata);
-    `downcast(input_item.operation, get_field_val(ral.ctrl_shadowed.operation, wdata));
+    input_item.manual_op   = get_field_val(ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION, wdata);
+    input_item.key_len     = get_field_val(ral.aes_core.CTRL_SHADOWED.KEY_LEN, wdata);
+    input_item.sideload_en = get_field_val(ral.aes_core.CTRL_SHADOWED.SIDELOAD, wdata);
+    `downcast(input_item.operation, get_field_val(ral.aes_core.CTRL_SHADOWED.OPERATION, wdata));
     input_item.valid = 1'b1;
-    case (get_field_val(ral.ctrl_shadowed.mode, wdata))
+    case (get_field_val(ral.aes_core.CTRL_SHADOWED.MODE, wdata))
       6'b00_0001:  input_item.mode = AES_ECB;
       6'b00_0010:  input_item.mode = AES_CBC;
       6'b00_0100:  input_item.mode = AES_CFB;
@@ -89,12 +83,12 @@ class aes_scoreboard extends cip_base_scoreboard #(
       default:     input_item.mode = AES_NONE;
     endcase
     // sample coverage on ctrl register
-    cov_if.cg_ctrl_sample(get_field_val(ral.ctrl_shadowed.operation, wdata),
-                          get_field_val(ral.ctrl_shadowed.mode, wdata),
-                          get_field_val(ral.ctrl_shadowed.key_len, wdata),
-                          get_field_val(ral.ctrl_shadowed.manual_operation, wdata),
-                          get_field_val(ral.ctrl_shadowed.sideload, wdata),
-                          get_field_val(ral.ctrl_shadowed.prng_reseed_rate, wdata));
+    cov_if.cg_ctrl_sample(get_field_val(ral.aes_core.CTRL_SHADOWED.OPERATION, wdata),
+                          get_field_val(ral.aes_core.CTRL_SHADOWED.MODE, wdata),
+                          get_field_val(ral.aes_core.CTRL_SHADOWED.KEY_LEN, wdata),
+                          get_field_val(ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION, wdata),
+                          get_field_val(ral.aes_core.CTRL_SHADOWED.SIDELOAD, wdata),
+                          get_field_val(ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE, wdata));
 
     input_item.clean();
     input_item.start_item = 1;
@@ -113,8 +107,8 @@ class aes_scoreboard extends cip_base_scoreboard #(
     //   verified using a directed test.
     // - Whether a first block has been processed already and the DUT can enter GCM_SAVE is hard to
     //   track. This is thus verified using a directed test.
-    gcm_phase_prev = gcm_phase_e'(`gmv(ral.ctrl_gcm_shadowed.phase));
-    gcm_phase = get_field_val(ral.ctrl_gcm_shadowed.phase, wdata);
+    gcm_phase_prev = gcm_phase_e'(`gmv(ral.aes_core.CTRL_GCM_SHADOWED.PHASE));
+    gcm_phase = get_field_val(ral.aes_core.CTRL_GCM_SHADOWED.PHASE, wdata);
     if (!(gcm_phase inside {GCM_INIT,
                             GCM_RESTORE,
                             GCM_AAD,
@@ -175,10 +169,10 @@ class aes_scoreboard extends cip_base_scoreboard #(
       default:      input_item.item_type = AES_CFG;
     endcase
     // Invalid values such as values in the range of [17, 31] and 0 are resolved to 16 in hardware.
-    num_valid_bytes = get_field_val(ral.ctrl_gcm_shadowed.num_valid_bytes, wdata);
+    num_valid_bytes = get_field_val(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES, wdata);
     input_item.data_len = (num_valid_bytes < 1) || (num_valid_bytes > 16) ? 16 : num_valid_bytes;
 
-    cov_if.cg_ctrl_gcm_reg_sample(get_field_val(ral.ctrl_gcm_shadowed.phase, wdata));
+    cov_if.cg_ctrl_gcm_reg_sample(get_field_val(ral.aes_core.CTRL_GCM_SHADOWED.PHASE, wdata));
   endfunction
 
   function void on_key_share_write(string csr_name, logic [31:0] wdata);
@@ -221,12 +215,12 @@ class aes_scoreboard extends cip_base_scoreboard #(
 
   function void on_trigger_write(logic [31:0] wdata);
     //start triggered
-    cov_if.cg_trigger_sample(get_field_val(ral.trigger.start, wdata),
-                             get_field_val(ral.trigger.key_iv_data_in_clear, wdata),
-                             get_field_val(ral.trigger.data_out_clear, wdata),
-                             get_field_val(ral.trigger.prng_reseed, wdata));
+    cov_if.cg_trigger_sample(get_field_val(ral.aes_core.TRIGGER.START, wdata),
+                             get_field_val(ral.aes_core.TRIGGER.KEY_IV_DATA_IN_CLEAR, wdata),
+                             get_field_val(ral.aes_core.TRIGGER.DATA_OUT_CLEAR, wdata),
+                             get_field_val(ral.aes_core.TRIGGER.PRNG_RESEED, wdata));
     `uvm_info(`gfn, $sformatf("\nWrite to Trigger register observed: 0x%h", wdata), UVM_MEDIUM)
-    if (get_field_val(ral.trigger.start, wdata)) begin
+    if (get_field_val(ral.aes_core.TRIGGER.START, wdata)) begin
       if (input_item.mode != AES_GCM) begin
         ok_to_fwd = input_item.mode != AES_NONE;
       end else if (`EN_GCM == 0) begin
@@ -242,7 +236,7 @@ class aes_scoreboard extends cip_base_scoreboard #(
       end
     end
     // clear key, IV, data_in
-    if (get_field_val(ral.trigger.key_iv_data_in_clear, wdata)) begin
+    if (get_field_val(ral.aes_core.TRIGGER.KEY_IV_DATA_IN_CLEAR, wdata)) begin
       void'(input_item.key_clean(0, 1));
       void'(input_item.iv_clean(0, 1));
       void'(key_item.key_clean(0, 1));
@@ -261,7 +255,7 @@ class aes_scoreboard extends cip_base_scoreboard #(
       `uvm_info(`gfn, $sformatf("\n\t ----| clearing DATA_IN"), UVM_MEDIUM)
     end
     // clear data out
-    if (get_field_val(ral.trigger.data_out_clear, wdata)) begin
+    if (get_field_val(ral.aes_core.TRIGGER.DATA_OUT_CLEAR, wdata)) begin
       `uvm_info(`gfn, $sformatf("\n\t ----| clearing DATA_OUT"), UVM_MEDIUM)
       if (cfg.clear_reg_w_rand) begin
         input_item.data_out = {4{$urandom()}};
@@ -274,7 +268,7 @@ class aes_scoreboard extends cip_base_scoreboard #(
       // waiting for output data is forwarded without the data.
     end
     // reseed
-    if (get_field_val(ral.trigger.prng_reseed, wdata)) begin
+    if (get_field_val(ral.aes_core.TRIGGER.PRNG_RESEED, wdata)) begin
       // The PRNG reseeding is tested using the dedicated aes_reseed_vseq.sv sequence.
     end
   endfunction
@@ -331,249 +325,6 @@ class aes_scoreboard extends cip_base_scoreboard #(
       end
     endcase
   endfunction
-
-  virtual task process_tl_access(tl_seq_item item, tl_channels_e channel, string ral_name);
-    uvm_reg        csr;
-    aes_seq_item   input_clone;
-    aes_seq_item   complete_clone;
-    bit            do_read_check = 1'b0;
-    bit            write         = item.is_write();
-    uvm_reg_addr_t csr_addr      = cfg.ral_models[ral_name].get_word_aligned_addr(item.a_addr);
-
-    csr = cfg.ral_models[ral_name].get_default_map().get_reg_by_offset(csr_addr);
-    if (csr == null) begin
-      `uvm_fatal(`gfn, $sformatf("Access unexpected addr 0x%0h", csr_addr))
-    end
-
-    if (channel == AddrChannel) begin
-      string csr_name = csr.get_name();
-      `uvm_info(`gfn, $sformatf("\n\t ----| ITEM received reg name : %s",csr.get_name()), UVM_FULL)
-
-      // if incoming access is a write to a valid csr, then make updates right away
-      if (write) begin
-        void'(csr.predict(.value(item.a_data), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-        on_addr_channel_write(csr_name, item.a_data);
-      end
-
-      ///////////////////////////////////////
-      //             Valid checks          //
-      ///////////////////////////////////////
-
-      // check that the item is valid - all registers clean base on mode //
-      if (input_item.valid && !input_item.manual_op) begin
-        // update key with what came from sideload
-        if(input_item.sideload_en && input_item.start_item) begin
-          input_item.key = key_item.key;
-          input_item.key_vld = key_item.key_vld;
-        end
-        case (input_item.mode)
-          AES_ECB: begin
-            `uvm_info(`gfn, $sformatf("\n\t ----| AES Mode: %0s", input_item.mode.name()),
-               UVM_MEDIUM)
-            if (input_item.start_item) begin
-              // Verify that all 4 data_in and all 8 initial key registers have been updated.
-              if (input_item.data_in_valid() && input_item.key_clean(0, 0)) begin
-                // Clone and add to ref and rec data FIFO.
-                ok_to_fwd = 1;
-                input_item.start_item = 0;
-              end
-            end else begin
-              // Verify that all 4 data_in and all initial 8 key registers are clean.
-              `uvm_info(`gfn, $sformatf("\n\t ----| data_in_vld? %b, key clean? %b",
-                  input_item.data_in_valid(), input_item.key_clean(1, 0)), UVM_MEDIUM)
-              if (input_item.data_in_valid() && input_item.key_clean(1, 0)) begin
-                // Clone and add to ref and rec data FIFO.
-                ok_to_fwd = 1;
-              end
-            end
-          end
-
-          AES_CBC,
-          AES_CFB,
-          AES_OFB,
-          AES_CTR,
-          AES_GCM: begin
-            if (input_item.mode != AES_GCM || `EN_GCM) begin
-              `uvm_info(`gfn, $sformatf("\n\t ----| AES Mode: %0s", input_item.mode.name()),
-                  UVM_MEDIUM)
-              if (input_item.start_item) begin
-                // Verify that all 4 data_in, all 8 initial key, and all 4 IV registers have been
-                // updated.
-                if (input_item.data_in_valid() && input_item.key_clean(0, 0)
-                     && input_item.iv_clean(0, 0)) begin
-                  // Clone and add to ref and rec data FIFO.
-                  ok_to_fwd = 1;
-                  input_item.start_item = 0;
-                end
-              end else begin
-                // Verify that all 4 data_in, all 8 initial key, and all 4 IV registers are clean.
-                `uvm_info(`gfn, $sformatf("\n\t ----| data_in_vld? %b, key clean? %b, IV clean? %b",
-                    input_item.data_in_valid(), input_item.key_clean(1, 0),
-                    input_item.iv_clean(1, 0)), UVM_MEDIUM)
-                if (input_item.data_in_valid() && input_item.key_clean(1, 0)
-                     && input_item.iv_clean(1, 0)) begin
-                  // Clone and add to ref and rec data FIFO.
-                  ok_to_fwd = 1;
-                end
-              end
-            end else begin
-              `uvm_info(`gfn, "\n\t ----| Received illegal AES_GCM setting, reverting to AES_NONE",
-                  UVM_MEDIUM)
-            end
-          end
-
-          default: begin
-            `uvm_info(`gfn, "\n\t ----| Received illegal AES_MODE setting, reverting to AES_NONE",
-                UVM_MEDIUM)
-          end
-        endcase // case (input_item.mode)
-      end // if (input_item.valid)
-
-      // forward item to receive side
-      if (ok_to_fwd) begin
-        ok_to_fwd = 0;
-        `downcast(input_clone, input_item.clone());
-        `uvm_info(`gfn, $sformatf("\n\t AES INPUT ITEM RECEIVED - \n %s \n\t split message: %0b",
-                                   input_clone.convert2string(), input_clone.split_item),
-                                  UVM_MEDIUM)
-        if (input_clone.mode == AES_GCM && input_clone.item_type == AES_GCM_AAD) begin
-          rcv_aad_item_q.push_front(input_clone);
-        end else begin
-          rcv_item_q.push_front(input_clone);
-          // only reset the split here
-          // in the case the reset comes after data input
-          // having it in clean will reset it when the ctrl
-          // is written
-          input_item.split_item = 0;
-        end
-        input_item.clean();
-      end
-    end
-
-    //////////////////////////////////////////////////////////////////////////////
-    // get an item from the rcv queue and wait for all output data to be received
-    //////////////////////////////////////////////////////////////////////////////
-
-    `uvm_info(`gfn, $sformatf("\n\t ---| channel  %h", channel), UVM_DEBUG)
-    if (!write && channel == DataChannel) begin
-      if (do_read_check) begin
-        `DV_CHECK_EQ(csr.get_mirrored_value(), item.d_data,
-                     $sformatf("reg name: %0s", csr.get_full_name()))
-      end
-      void'(csr.predict(.value(item.d_data), .kind(UVM_PREDICT_READ)));
-      `uvm_info(`gfn, $sformatf("\n\t ----| SAW READ - %s data %02h",csr.get_name(),  item.d_data)
-                , UVM_MEDIUM)
-
-      case (csr.get_name())
-        "data_out_0": begin
-          output_item.data_out[0]     = item.d_data;
-          output_item.data_out_vld[0] = 1;
-          cov_if.cg_rd_data_sample(0);
-        end
-        "data_out_1": begin
-          output_item.data_out[1]     = item.d_data;
-          output_item.data_out_vld[1] = 1;
-          cov_if.cg_rd_data_sample(1);
-        end
-        "data_out_2": begin
-          output_item.data_out[2]     = item.d_data;
-          output_item.data_out_vld[2] = 1;
-          cov_if.cg_rd_data_sample(2);
-        end
-        "data_out_3": begin
-          output_item.data_out[3]     = item.d_data;
-          output_item.data_out_vld[3] = 1;
-          cov_if.cg_rd_data_sample(3);
-        end
-
-        "status": begin
-          cov_if.cg_status_sample(item.d_data);
-          datain_rdy = (get_field_val(ral.status.input_ready, item.d_data) == 1) ? '1 : '0;
-          // if dut IDLE and able to accept input
-          // and no output is ready
-          // there won't be a response for this item
-          // reset/clear was triggered
-          `uvm_info(`gfn, $sformatf("\n\t ---| Status read: \n\t idle %0b \n\t output lost %0b  ",
-                          get_field_val(ral.status.idle, item.d_data),
-                          get_field_val(ral.status.output_lost, item.d_data)), UVM_MEDIUM)
-
-          if (get_field_val(ral.status.idle, item.d_data) &&
-              get_field_val(ral.status.output_lost, item.d_data)) begin
-            if (rcv_item_q.size() != 0) begin
-              void'(rcv_item_q.pop_back());
-              `uvm_info(`gfn, $sformatf("\n\t ----| removing item from input queue"), UVM_MEDIUM)
-            end
-            if (rcv_aad_item_q.size() != 0) begin
-              void'(rcv_aad_item_q.pop_back());
-              `uvm_info(`gfn, $sformatf("\n\t ----| removing aad item from input queue"),
-                        UVM_MEDIUM)
-            end
-          end
-        end
-      endcase // case (csr.get_name())
-
-      if (output_item.data_out_valid() || output_item.data_was_cleared) begin
-        // if data_out is read multiple times in a row we should not pop input more than once
-        if (rcv_item_q.size() == 0) begin
-          output_item                    = new();
-        end else begin
-
-          // Before putting the item into the FIFO, check whether we are in AES-GCM
-          // mode. In this mode, we first need to put the AAD blocks into the FIFO
-          // to maintain the correct order.
-          if (rcv_aad_item_q.size() > 0) begin
-            // When in AES_GCM mode, there might be N AAD blocks and Y output
-            // DATA blocks. As the number of blocks do not need to match, pop
-            // all AAD blocks at the very first output DATA block.
-            bit first_aad_item           = 1'b1;
-            while (rcv_aad_item_q.size() > 0) begin
-              complete_aad_item          = rcv_aad_item_q.pop_back();
-              first_aad_item             = 1'b0;
-              `downcast(complete_clone, complete_aad_item.clone());
-              item_fifo.put(complete_clone);
-            end
-            complete_aad_item            = new();
-          end
-
-          complete_item                  = rcv_item_q.pop_back();
-          complete_item.data_out         = output_item.data_out;
-          complete_item.data_was_cleared = output_item.data_was_cleared;
-          // if message was split and data was read out.
-          // we will have one more message than expected.
-          if (complete_item.split_item) begin
-            cfg.split_cnt++;
-            `uvm_info(`gfn, $sformatf("\n\t ----| incrementing split count now at: %d",
-                      cfg.split_cnt), UVM_MEDIUM)
-          end
-
-          `downcast(complete_clone, complete_item.clone());
-          item_fifo.put(complete_clone);
-          output_item                    = new();
-          complete_item                  = new();
-        end
-      end
-    end
-  endtask // process_tl_access
-
-
-  //This task will check for any sideload keys that have been provided
-  virtual task process_sideload_key();
-    key_sideload_item sideload_item;
-    sideload_item = new("sideload_item");
-
-      forever begin
-        // Wait for a valid sideloaded key
-        key_manager_fifo.get(sideload_item);
-        // Note: max size of sideloaded key is keymgr_pkg::KeyWidth
-
-        for (int i = 0; i < keymgr_pkg::KeyWidth / 32; i++) begin
-          key_item.key[0][i]     = sideload_item.key0[i*32 +: 32];
-          key_item.key[1][i]     = sideload_item.key1[i*32 +: 32];
-          key_item.key_vld[0][i] = sideload_item.valid;
-          key_item.key_vld[1][i] = sideload_item.valid;
-        end
-      end
-  endtask
 
 
   // takes items from the item queue and builds full

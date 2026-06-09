@@ -5,30 +5,22 @@
 package aes_env_pkg;
   // dep packages
   import uvm_pkg::*;
-  import top_pkg::*;
+  import caliptra_tlul_pkg::*;
   import dv_utils_pkg::*;
-  import csr_utils_pkg::*;
-  import dv_base_reg_pkg::*;
-  import tl_agent_pkg::*;
   import dv_lib_pkg::*;
-  import cip_base_pkg::*;
-  import aes_reg_pkg::*;
-  import aes_ral_pkg::*;
+  import caliptra_dv_utils_pkg::*;
   import aes_pkg::*;
-  import key_sideload_agent_pkg::*;
-
-  // AES-specific RAL extension
-  `include "aes_ral_extension.svh"
+  import aes_reg_pkg::*;
+  import aes_clp_reg_uvm::*;
+  import ahb_agent_pkg::*;
+  import nist_vectors_pkg::*;
+  import nist_vectors_gcm_pkg::*;
 
   // macro includes
   `include "uvm_macros.svh"
   `include "dv_macros.svh"
 
-  typedef virtual key_sideload_if   sideload_vif;
   // parameters
-  parameter uint NUM_ALERTS = 2;
-  parameter string LIST_OF_ALERTS[NUM_ALERTS] = {"recov_ctrl_update_err", "fatal_fault"};
-  parameter uint NUM_EDN = 1;
 
   typedef enum int {
     AES_CFG         = 0,

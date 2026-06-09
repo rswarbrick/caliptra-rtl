@@ -1,4 +1,3 @@
-
 [ENCRYPT]
 
 COUNT = 0

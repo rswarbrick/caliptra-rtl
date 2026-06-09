@@ -83,8 +83,8 @@ interface fi_control_if
     bit  read;
     bit  value;
     $assertoff(0, "tb.dut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
     if (!uvm_hdl_check_path(intf_array[target])) begin
       `uvm_fatal("fi_control_if", $sformatf("PATH NOT EXISTING %m"))
     end
@@ -140,8 +140,8 @@ interface fi_control_if
 
     bit  read;
     $assertoff(0, "tb.dut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscDataOut");
-    $asserton(0, "tb.dut.u_aes_core.AesSecCmDataRegLocalEscIv");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscDataOut");
+    $asserton(0, "tb.dut.aes_inst.u_aes_core.AesSecCmDataRegLocalEscIv");
     if (!uvm_hdl_check_path(intf_mul_array[target])) begin
       `uvm_fatal("fi_control_if", $sformatf("PATH NOT EXISTING %m"))
     end

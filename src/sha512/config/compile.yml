@@ -1,4 +1,7 @@
 ---
+# SHA-512 controller RTL: generated register file, parameter package, control
+# wrapper, top, and the unmasked SHA-512 core (round logic, W memory, H/K
+# constants). The masked variant lives under src/sha512_masked/.
 provides: [sha512_ctrl]
 schema_version: 2.4.0
 requires:
@@ -9,7 +12,7 @@ targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
-      - $COMPILE_ROOT/rtl/sha512_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/sha512_reg_pkg.sv
       - $COMPILE_ROOT/rtl/sha512_params_pkg.sv
       - $COMPILE_ROOT/rtl/sha512_ctrl.sv
       - $COMPILE_ROOT/rtl/sha512.sv
@@ -17,23 +20,24 @@ targets:
       - $COMPILE_ROOT/rtl/sha512_h_constants.v
       - $COMPILE_ROOT/rtl/sha512_k_constants.v
       - $COMPILE_ROOT/rtl/sha512_w_mem.v
-      - $COMPILE_ROOT/rtl/sha512_reg.sv
+      - $COMPILE_ROOT/rtl/generated/sha512_reg.sv
     tops: [sha512_ctrl]
   rtl_lint:
     directories: []
-    waiver_files: 
+    waiver_files:
       #- $COMPILE_ROOT/config/rtl_lint/sha512.waiver
       - $MSFT_REPO_ROOT/src/sha512/config/design_lint/sha512_ctrl/sglint_waivers
 ---
-provides: [sha512_ctrl_tb]  
+# Standalone testbench top for the SHA-512 controller.
+provides: [sha512_ctrl_tb]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha512_ctrl
   - sha512_coverage
   - caliptra_top_reg_defines
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/sha512_ctrl_tb.sv
@@ -47,13 +51,15 @@ global:
         - +define+SIMULATION
         - '-noinherit_timescale=1ns/1ps'
 ---
-provides: [sha512_coverage]  
+# Functional-coverage collateral bound onto the SHA-512 controller.
+# Testbench-only.
+provides: [sha512_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - sha512_ctrl
 targets:
   tb:
-    directories: 
+    directories:
       - $COMPILE_ROOT/coverage
     files:
       - $COMPILE_ROOT/coverage/sha512_ctrl_cov_if.sv

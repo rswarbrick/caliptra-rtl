@@ -46,9 +46,9 @@ task aes_wake_up_vseq::body();
   // poll status register
 
   `uvm_info(`gfn, $sformatf("\n\t ---| Polling for data register %s",
-                            ral.status.convert2string()), UVM_DEBUG)
+                            ral.aes_core.STATUS.convert2string()), UVM_DEBUG)
 
-  csr_spinwait(.ptr(ral.status.output_valid) , .exp_data(1'b1));
+  ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
   read_data(cypher_text, do_b2b);
   // read output
   `uvm_info(`gfn, $sformatf("\n\t ------|WAIT 0 |-------"), UVM_HIGH)
@@ -68,11 +68,11 @@ task aes_wake_up_vseq::body();
   add_data(cypher_text, do_b2b);
 
 
-  `uvm_info(`gfn, $sformatf("\n\t ---| Polling for data %s", ral.status.convert2string()),
+  `uvm_info(`gfn, $sformatf("\n\t ---| Polling for data %s", ral.aes_core.STATUS.convert2string()),
             UVM_DEBUG)
 
   cfg.clk_rst_vif.wait_clks(20);
-  csr_spinwait(.ptr(ral.status.output_valid) , .exp_data(1'b1));
+  ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
   read_data(decrypted_text, do_b2b);
   //need scoreboard disable
   foreach(plain_text[i]) begin

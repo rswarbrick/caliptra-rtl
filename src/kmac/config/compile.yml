@@ -1,4 +1,7 @@
 ---
+# SV package (sha3_pkg) shared by the legacy KMAC/SHA3 sources under
+# src/kmac/. Distinct from the OpenTitan-derived KMAC under src/sha3/, which
+# provides its own kmac_pkg via the sha3_kmac provider.
 provides: [kmac_pkg]
 schema_version: 2.4.0
 targets:
@@ -7,6 +10,9 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/sha3_pkg.sv
 ---
+# Legacy in-tree SHA3/Keccak primitives (keccak_round, keccak_2share, sha3pad,
+# sha3). Predates the OpenTitan ot_sha3_prim sources under src/sha3/ and is
+# kept available for consumers that still elaborate the older module set.
 provides: [kmac]
 schema_version: 2.4.0
 requires:

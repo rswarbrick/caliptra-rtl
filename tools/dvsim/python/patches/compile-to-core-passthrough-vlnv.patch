@@ -1,0 +1,25 @@
+Allow VLNV-shaped names in `requires:` to bypass the name prefix.
+
+compile-to-core unconditionally prepends `name_pfx` (default
+`caliptra:compile_yml`) to every entry in a compile.yml `requires:`
+list, with no escape hatch (pre_exec/post_exec/options/global are all
+stripped). That means compile.yml-side consumers cannot declare a
+dependency on a hand-written FuseSoC core (e.g.
+`lowrisc:dv:dv_base_reg`), which is needed when generated cores must
+anchor compile order against natively-owned library files.
+
+Pass through any name that already contains a `:` -- treat it as a
+fully-qualified VLNV and emit it verbatim. Bare names still get the
+prefix as before.
+
+--- a/src/compile_to_core/core.py
++++ b/src/compile_to_core/core.py
+@@ -98,7 +98,7 @@
+                 as P:N.
+
+     """
+-    return [f"{name_pfx}:{r}" for r in requires]
++    return [r if ":" in r else f"{name_pfx}:{r}" for r in requires]
+
+
+ def make_file_entry(

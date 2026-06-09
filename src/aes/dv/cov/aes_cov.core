@@ -9,7 +9,7 @@ filesets:
   files_dv:
     depend:
       - lowrisc:dv:dv_utils
-      - lowrisc:dv:cip_lib
+      - lowrisc:dv:dv_lib
       - caliptra:compile_yml:aes
     files:
       - aes_cov_if.sv

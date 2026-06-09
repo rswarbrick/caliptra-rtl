@@ -96,8 +96,8 @@ class aes_core_fi_vseq extends aes_base_vseq;
           // The fault potentially prevents the module from making any progress. DV will try to
           // clear and restart it but might never succeed resulting in the module being idle and
           // again busy.
-          csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b1));
-          csr_spinwait(.ptr(ral.status.idle), .exp_data(1'b0));
+          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b0);
           cfg.aes_core_fi_vif.force_signal(target, RELEASE, force_value);
         end else begin
           // The fault might trigger a reset or not.
@@ -114,7 +114,7 @@ class aes_core_fi_vseq extends aes_base_vseq;
       end
 
     join
-    wait_no_outstanding_access();
+    /* wait_no_outstanding_access(): no-op after csr_utils removal */;
 
   endtask : body
 endclass

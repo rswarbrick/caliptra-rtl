@@ -1,24 +1,25 @@
-_*SPDX-License-Identifier: Apache-2.0<BR>
-<BR>
-<BR>
-Licensed under the Apache License, Version 2.0 (the "License");<BR>
-you may not use this file except in compliance with the License.<BR>
-You may obtain a copy of the License at<BR>
-<BR>
-http://www.apache.org/licenses/LICENSE-2.0 <BR>
-<BR>
-Unless required by applicable law or agreed to in writing, software<BR>
-distributed under the License is distributed on an "AS IS" BASIS,<BR>
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<BR>
-See the License for the specific language governing permissions and<BR>
-limitations under the License.*_<BR>
+_*SPDX-License-Identifier: Apache-2.0*_
+
+_*Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at*_
+
+_*http://www.apache.org/licenses/LICENSE-2.0*_
+
+_*Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.*_
 
 # **Release Notes** #
+
 _*Last Update: 2026/03/19*_
 
 ### Rev 2.1 ###
 
 #### Rev 2.1 release date: 2025/10/12 ###
+
 - Caliptra IP Specification: see docs/ folder
 - Caliptra Integration Specification: see docs/ folder
 - Caliptra testplan: see docs/ folder
@@ -34,6 +35,7 @@ _*Last Update: 2026/03/19*_
 ### Rev 2.1-rc1 ###
 
 #### Rev 2.1-rc1 release date: 2025/08/29 ###
+
 - Caliptra IP Specification: see docs/ folder
 - Caliptra Integration Specification: see docs/ folder
 - Caliptra testplan: see docs/ folder
@@ -47,6 +49,7 @@ _*Last Update: 2026/03/19*_
 ### Rev 2.0 ###
 
 #### Rev 2.0 release date: 2025/04/29 ###
+
 - Enhanced several testcases to improve coverage
 - Adams Bridge enhancement: variable message signing and data swizzling
 - Bug fixes:
@@ -56,6 +59,7 @@ _*Last Update: 2026/03/19*_
 ### Rev 2.0-rc1 ###
 
 #### Rev 2.0-rc1 release date: 2025/03/07 (2.0 version pending final security audits for official declaration) ###
+
 - Caliptra IP Specification: see docs/ folder
 - Caliptra Integration Specification: see docs/ folder
 - Caliptra testplan: see docs/ folder
@@ -76,6 +80,7 @@ _*Last Update: 2026/03/19*_
 ### Rev 1.1 ###
 
 #### Rev 1.1 release date: 2024/07/02 ####
+
 - Caliptra Hardware Specification: Updated with LMS accelerator, ECC radix changes, Key Vault updates
 - Caliptra Integration Specification updates to add clarity
 - Caliptra README updates to tool versions, simulation instructions
@@ -115,6 +120,7 @@ _*Last Update: 2026/03/19*_
   - Update HW\_REV\_ID bit-map and configure value to 1.1
 
 #### Bug Fixes ####
+
 [RTL] Add connection for JTAG TDO enable signal [#415](https://github.com/chipsalliance/caliptra-rtl/issues/415) [#425](https://github.com/chipsalliance/caliptra-rtl/pull/425)<br>
 [ENTROPY\_SRC] Entropy source sfifo signal unable to exit reset [#503](https://github.com/chipsalliance/caliptra-rtl/issues/503) [#506](https://github.com/chipsalliance/caliptra-rtl/pull/506)<br>
 [PV] Async reset condition missing for `nonce_offset_i` [#339](https://github.com/chipsalliance/caliptra-rtl/issues/339) [#444](https://github.com/chipsalliance/caliptra-rtl/issues/444) [#483](https://github.com/chipsalliance/caliptra-rtl/pull/483)<br>
@@ -126,6 +132,7 @@ _*Last Update: 2026/03/19*_
 ### Rev 1.0 ###
 
 #### Rev 1.0 release date: 2024/01/18 ####
+
 - Caliptra Hardware Specification: Markdown conversion
 - Caliptra Integration specification update with synthesis warnings and jtag tck requirement
 - Caliptra README updates to clarify test cases and running with VCS
@@ -141,11 +148,13 @@ _*Last Update: 2026/03/19*_
   - Remove JTAG IDCODE command from RISC-V processor
 
 #### Bug Fixes ####
+
 [MBOX] Fix ICCM Uncorrectable ECC error driving hw_error_non_fatal bit for LSU reads
 
 ### Rev 1.0-rc1 ###
 
 #### Rev 1.0-rc1 release date: 2023/11/03 (1.0 version pending ROM release for official declaration) ###
+
 - Caliptra IP Specification: see docs/ folder
 - Caliptra Integration Specification: see docs/ folder
 - Caliptra testplan: see docs/ folder
@@ -187,6 +196,7 @@ _*Last Update: 2026/03/19*_
   - SHA Formal Verification
 
 #### Bug Fixes ####
+
 [CLK GATING] Fatal error should wake up clks<br>
 [CLK GATING] JTAG accesses need to wake up clocks<br>
 [DOE] add zeroize to clear all internal regs<br>
@@ -288,6 +298,7 @@ _*Last Update: 2026/03/19*_
 #### DISCLAIMER: This is NOT A BUG-FREE MODEL. This is a pre-0.8 development model that will be sync’d every week. ####
 #### This model is released mainly for interface, floorplan planning purposes for consumers. ####
 #### 0.8 release date = 03-31-2023 ####
+
 - Caliptra Hardware Specification: see docs/ folder
 - Caliptra Integration Specification: see docs/ folder
 - Caliptra testplan: see docs/ folder
@@ -324,10 +335,12 @@ _*Last Update: 2026/03/19*_
     -   UVMF for multiple DUT blocks and SOC interface
 
 ### Rev rtl-caliptra_rtl_0.5.1 ###
+
 -   Add missing printf/ and includes/ directories to src/integration/test_suites which are required to run the tests
 -   Updated Version.txt and tar.gz
 
 ### Rev rtl-caliptra_rtl_0.5rtl ###
+
 -	CHIPALLIANCE RISC-V Core - https://github.com/chipsalliance/Cores-VeeR-EL2
     - ICCM, DCCM enabled w/ 128KB each; Instruction Cache disabled; fast interrupt redirect enabled
 -	Cryptos (please see the spec for NIST compliance algorithms followed)
@@ -353,7 +366,3 @@ _*Last Update: 2026/03/19*_
     - Smoke tests for all of the above passing including bring up/boot of the caliptra IP (KV testing for ECC & SHA are pending)
     - UVMF for multiple DUT blocks and SOC interface
     - NOTE: 0.8 release will have stress validation on SOC interface with random resets, clock gating, impactless update crossed with mailbox protocol etc.
-
-
-
-

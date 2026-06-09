@@ -11,6 +11,7 @@ filesets:
 
   files_dv:
     depend:
+      - caliptra:compile_yml:aes_uvm_pkg
       - lowrisc:dv:aes_test
       - lowrisc:dv:aes_sva
       - lowrisc:dv:aes_err_injection

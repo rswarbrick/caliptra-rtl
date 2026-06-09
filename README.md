@@ -1,23 +1,24 @@
-_*SPDX-License-Identifier: Apache-2.0<BR>
-<BR>
-<BR>
-Licensed under the Apache License, Version 2.0 (the "License");<BR>
-you may not use this file except in compliance with the License.<BR>
-You may obtain a copy of the License at<BR>
-<BR>
-http://www.apache.org/licenses/LICENSE-2.0 <BR>
-<BR>
-Unless required by applicable law or agreed to in writing, software<BR>
-distributed under the License is distributed on an "AS IS" BASIS,<BR>
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.<BR>
-See the License for the specific language governing permissions and<BR>
-limitations under the License.*_<BR>
+_*SPDX-License-Identifier: Apache-2.0*_
+
+_*Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at*_
+
+_*http://www.apache.org/licenses/LICENSE-2.0*_
+
+_*Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.*_
 
 # **Caliptra Hands-On Guide** #
+
 _*Last Update: 2025/08/29*_
 
 ## **Release Consumption and Integration** ##
-Prior official releases are available at: https://github.com/chipsalliance/caliptra-rtl/releases<br>
+
+Prior official releases are available at: https://github.com/chipsalliance/caliptra-rtl/releases.
 Releases are published as a tag, and also contain downloadable assets (which should not be used).
 Instead of downloading the assets attached to the published release, integrators should consume Caliptra releases by pulling code from the repository at the associated tag, due to https://github.com/chipsalliance/caliptra-rtl/issues/471.
 
@@ -62,7 +63,7 @@ GCC:
 CDC:
  - Questa CDC
    - `2023.4_3 5762808 linux_x86_64 29-Feb-2024`
-  
+
 RDC:
  - Real Intent Meridian
    - `2022.A.P18.3`
@@ -81,6 +82,7 @@ Other:
  - Playbook (Microsoft Internal workflow management tool)
 
 ### **RISCV Toolchain installation** ###
+
 There is significant configurability when installing the RISCV toolchain.
 These instructions may be used to create a RISCV installation that will be compatible
 with the provided Makefile for compiling test C programs.
@@ -88,24 +90,26 @@ with the provided Makefile for compiling test C programs.
 1. Install from this repository:
     - https://github.com/riscv-collab/riscv-gnu-toolchain
     - Follow the included README in that repository for installation instructions
-2. The most recently tested toolchain build that was confirmed to work was 2023-04-29
+1. The most recently tested toolchain build that was confirmed to work was 2023-04-29
     - https://github.com/riscv-collab/riscv-gnu-toolchain/releases/tag/2023.04.29
-3. A compatible tool installation requires newlib cross-compiler, multilib support, and the zicsr/zifencei extensions. Use this configure command:
+1. A compatible tool installation requires newlib cross-compiler, multilib support, and the zicsr/zifencei extensions. Use this configure command:
     - `./configure --enable-multilib --prefix=/path/to/tools/riscv-gnu/2023.04.29 --with-multilib-generator="rv32imc-ilp32--a*zicsr*zifencei"`
-4. Use `make` instead of `make linux` to install the tool (using newlib option)
+1. Use `make` instead of `make linux` to install the tool (using newlib option)
 
 ## **ENVIRONMENT VARIABLES** ##
-Required for simulation:<BR>
-`CALIPTRA_WORKSPACE`: Defines the absolute path to the directory where the Verilator "scratch" output directory will be created. Recommended to define as the absolute path to the directory that contains a subdirectory "chipsalliance" which, in turn, contains the Project repository root (called "Caliptra" or "caliptra-rtl")<BR>
-`CALIPTRA_ROOT`: Defines the absolute path to the Project repository root (called "Caliptra" or "caliptra-rtl"). Recommended to define as `${CALIPTRA_WORKSPACE}/chipsalliance/caliptra-rtl`.<BR>
-`CALIPTRA_AXI4PC_DIR`: Path to the directory that contains the ARM AXI4 Protocol Checker file. This file must be acquired from the Arm website by integrators, as it contains copyrighted materials.<BR>
-`CALIPTRA_PRIM_ROOT`: Set to $CALIPTRA_ROOT/src/caliptra_prim_generic for simulation. See integration specification for technology specific instructions.
-`CALIPTRA_PRIM_MODULE_PREFIX`: Set to caliptra_prim_generic for simulation. See integration specification for technology specific instructions.
 
-Required for Firmware (i.e. Test suites) makefile:<BR>
-  `TESTNAME`: Contains the name of one of the tests listed inside the `src/integration/test_suites` folder; only used for `caliptra_top_tb` tests<BR>
+Required for simulation:
+- `CALIPTRA_WORKSPACE`: Defines the absolute path to the directory where the Verilator "scratch" output directory will be created. Recommended to define as the absolute path to the directory that contains a subdirectory "chipsalliance" which, in turn, contains the Project repository root (called "Caliptra" or "caliptra-rtl")
+- `CALIPTRA_ROOT`: Defines the absolute path to the Project repository root (called "Caliptra" or "caliptra-rtl"). Recommended to define as `${CALIPTRA_WORKSPACE}/chipsalliance/caliptra-rtl`.
+- `CALIPTRA_AXI4PC_DIR`: Path to the directory that contains the ARM AXI4 Protocol Checker file. This file must be acquired from the Arm website by integrators, as it contains copyrighted materials.
+- `CALIPTRA_PRIM_ROOT`: Set to $CALIPTRA_ROOT/src/caliptra_prim_generic for simulation. See integration specification for technology specific instructions.
+- `CALIPTRA_PRIM_MODULE_PREFIX`: Set to caliptra_prim_generic for simulation. See integration specification for technology specific instructions.
+
+Required for Firmware (i.e. Test suites) makefile:
+- `TESTNAME`: Contains the name of one of the tests listed inside the `src/integration/test_suites` folder; only used for `caliptra_top_tb` tests
 
 ## **Repository Overview** ##
+
 ```
 caliptra-rtl
 |-- LICENSE
@@ -154,13 +158,16 @@ caliptra-rtl
     |-- scripts
     `-- templates
 ```
-The root of the repository is structured as shown above, to a depth of 2 layers.<BR>
-Each sub-component is accompanied by a file list summary (located in src/<component>/config/<name>.vf) that comprises all the filenames required to compile the component, and an optional testbench filelist for unit-level simulation. <BR>
-VF files provide absolute filepaths (prefixed by the `CALIPTRA_ROOT` environment variable) to each compile target for the associated component.<BR>
-The "Integration" sub-component contains the top-level fileset for Caliptra. `src/integration/config/compile.yml` defines the required filesets and sub-component dependencies for this build target. All of the files/dependencies are explicitly listed in `src/integration/config/caliptra_top_tb.vf`. Users may compile the entire design using only this VF filelist.<BR>
+The root of the repository is structured as shown above, to a depth of 2 layers.
+
+Each sub-component is accompanied by a file list summary (located in src/<component>/config/<name>.vf) that comprises all the filenames required to compile the component, and an optional testbench filelist for unit-level simulation.
+VF files provide absolute filepaths (prefixed by the `CALIPTRA_ROOT` environment variable) to each compile target for the associated component.
+
+The "Integration" sub-component contains the top-level fileset for Caliptra. `src/integration/config/compile.yml` defines the required filesets and sub-component dependencies for this build target. All of the files/dependencies are explicitly listed in `src/integration/config/caliptra_top_tb.vf`. Users may compile the entire design using only this VF filelist.
 
 
 ## **Verilog File Lists** ##
+
 Verilog file lists are generated via VCS and included in the config directory for each unit. New files added to the design must be included in the vf list. They can be included manually or by using VCS to regenerate the vf file. File lists define the compilation sources (including all dependencies) required to build and simulate a given module or testbench, and should be used by integrators for simulation, lint, and synthesis.
 
 Important: Users must download the [ARM AXI4 Protocol Checker](https://developer.arm.com/downloads/view/BP063) from ARM, as it is a dependency
@@ -169,23 +176,24 @@ caliptra-rtl GitHub repository.
 
 ## **Scripts Description** ##
 
-`demo.rdl`:Sample RDL file<BR>
-`Makefile`: Makefile to generate SRAM initialization files from test firmware and to run Verilator simulation<BR>
-`gen_soc_ifc_covergroups.py`: Python script to generate a template of covergroups for all registers in soc_ifc<BR>
-`reg_gen.py`: Used to compile/export RDL files to register source code<BR>
-`reg_gen.sh`: Wrapper used to call `reg_gen.py` for all IP cores in Caliptra<BR>
-`reg_doc_gen.py`: Used to compile/export top-level RDL address map to register source code, defining complete Caliptra address space, and produces HTML documentation<BR>
-`reg_doc_gen.sh`: Wrapper to invoke `reg_doc_gen.py`<BR>
-`reg_json.py`:Used to import JSON register definition from OpenTitan and generate SystemRDL model<BR>
-`rdl_post_process.py`: Post-processing functionality to make RDL generated SystemVerilog files compatible with lint/Verilator requirements<BR>
-`run_verilator_l0_regression.py`: Wrapper to run the L0 smoke test regression suite using the Makefile flow in Verilator<BR>
-`integration_vector_gen.py`: Generates test vectors for crypto core tests<BR>
-`veer_build_command.sh`: Shell script used to generate the VeeR-EL2 repository present in `src/riscv_core/veer_el2`<BR>
-`openocd`: Open-Source FW debug utility used for JTAG testing in automated workflows
+- `demo.rdl`: Sample RDL file
+- `Makefile`: Makefile to generate SRAM initialization files from test firmware and to run Verilator simulation
+- `gen_soc_ifc_covergroups.py`: Python script to generate a template of covergroups for all registers in soc_ifc
+- `reg_gen.py`: Used to compile/export RDL files to register source code
+- `reg_gen.sh`: Wrapper used to call `reg_gen.py` for all IP cores in Caliptra
+- `reg_doc_gen.py`: Used to compile/export top-level RDL address map to register source code, defining complete Caliptra address space, and produces HTML documentation
+- `reg_doc_gen.sh`: Wrapper to invoke `reg_doc_gen.py`
+- `reg_json.py`: Used to import JSON register definition from OpenTitan and generate SystemRDL model
+- `rdl_post_process.py`: Post-processing functionality to make RDL generated SystemVerilog files compatible with lint/Verilator requirements
+- `run_verilator_l0_regression.py`: Wrapper to run the L0 smoke test regression suite using the Makefile flow in Verilator
+- `integration_vector_gen.py`: Generates test vectors for crypto core tests
+- `veer_build_command.sh`: Shell script used to generate the VeeR-EL2 repository present in `src/riscv_core/veer_el2`
+- `openocd`: Open-Source FW debug utility used for JTAG testing in automated workflows
 
 ## **Simulation Flow** ##
 
 ### Caliptra Top VCS Steps: ###
+
 1. Setup tools, add to PATH (ensure RISC-V toolchain is also available)
 1. Define all environment variables above
     - For the initial test run after downloading repository, `iccm_lock` is recommended for TESTNAME
@@ -223,28 +231,30 @@ caliptra-rtl GitHub repository.
 1. Simulate project with `caliptra_top_tb` as the top target
 
 ### Caliptra Top Verilator Steps: ###
+
 1. Setup tools, add to PATH (ensure Verilator, GCC, and RISC-V toolchain are available)
-2. Define all environment variables above
+1. Define all environment variables above
     - For the initial test run after downloading repository, `iccm_lock` is recommended for TESTNAME
     - See [Regression Tests](#Regression-Tests) for information about available tests.
-3. Create a run folder for build outputs
+1. Create a run folder for build outputs
     - Recommended to place run folder under `${CALIPTRA_WORKSPACE}/scratch/$USER/verilator/<date>`
-4. [OPTIONAL] By default, this run flow will use the RISC-V toolchain to compile test firmware (according to TESTNAME) into program.hex, iccm.hex, dccm.hex, and mailbox.hex. As a first pass, integrators may alternatively use the pre-built hexfiles for convenience (available for `iccm_lock` test). To do this, copy `iccm_lock.hex` to the run directory and rename to `program.hex`. `dccm.hex` should also be copied to the run directory, as-is. Use `touch iccm.hex mailbox.hex` to create empty hex files, as these are unnecessary for `iccm_lock` test.
-5. Run Caliptra/tools/scripts/Makefile, which provides steps to run a top-level simulation in Verilator
+1. [OPTIONAL] By default, this run flow will use the RISC-V toolchain to compile test firmware (according to TESTNAME) into program.hex, iccm.hex, dccm.hex, and mailbox.hex. As a first pass, integrators may alternatively use the pre-built hexfiles for convenience (available for `iccm_lock` test). To do this, copy `iccm_lock.hex` to the run directory and rename to `program.hex`. `dccm.hex` should also be copied to the run directory, as-is. Use `touch iccm.hex mailbox.hex` to create empty hex files, as these are unnecessary for `iccm_lock` test.
+1. Run Caliptra/tools/scripts/Makefile, which provides steps to run a top-level simulation in Verilator
     - Example command:
         `make -C <path/to/run/folder> -f ${CALIPTRA_ROOT}/tools/scripts/Makefile TESTNAME=${TESTNAME} debug=1 verilator`
     - NOTE: `debug=1` is optional; if provided, the verilator run will produce a .vcd file with waveform information
     - NOTE: `TESTNAME=${TESTNAME}` is optional; if not provided, test defaults to value of TESTNAME environment variable, then to `iccm_lock`
     - NOTE: Users may wish to produce a run log by piping the make command to a tee command, e.g.:
         `make ... <args> ... | tee <path/to/run/folder>/verilate.log`
-6. Users have the option to run the entire suite of smoke tests using the provided python script `run_verilator_l0_regression.py`
+1. Users have the option to run the entire suite of smoke tests using the provided python script `run_verilator_l0_regression.py`
     1. Ensure Python 3.9.2 is available by adding to the $PATH variable
-    2. Run the script with:
+    1. Run the script with:
         `python3 ${CALIPTRA_ROOT}/tools/scripts/run_verilator_l0_regression.py`
-    3. NOTE: The script automatically creates run output folders at `${CALIPTRA_WORKSPACE}/scratch/$USER/verilator/<timestamp>/<testname>` for each test run
-    4. NOTE: The output folder is populated with a run log that reports the run results and pass/fail status
+    1. NOTE: The script automatically creates run output folders at `${CALIPTRA_WORKSPACE}/scratch/$USER/verilator/<timestamp>/<testname>` for each test run
+    1. NOTE: The output folder is populated with a run log that reports the run results and pass/fail status
 
 ### Unit Test VCS Steps: ###
+
 1. Setup tools, add to PATH
 1. Define all environment variables above
 1. Create a run folder for build outputs (and cd to it)
@@ -256,27 +266,27 @@ caliptra-rtl GitHub repository.
         * Necessary for [sha256_random_test](src/sha256/tb/sha256_random_test.sv)
 1. Simulate project with `<name>_tb` as the top target
 
-### UVM Testbench Steps for `caliptra_top`: <BR>
+### UVM Testbench Steps for `caliptra_top`:
 
-**Description**:<BR>
+**Description**:
 The UVM Framework generation tool was used to create the baseline UVM testbench for verification of the top-level Caliptra image. The top-level bench leverages the `soc_ifc_top` testbench as a subenvironment, to reuse environment level sequences, agents, register models, and predictors.
 
-**Prerequisites**:<BR>
+**Prerequisites**:
 - QVIP 2021.2.1 for Mentor Graphics (provides the AHB VIP)
 - AXI VIP 2025.1 for Avery
 - UVM 1.1d installation
 - Mentor Graphics UVM-Framework installation
 
-**Environment Variables**:<BR>
-Required for UVM simulation:<BR>
-`UVM_HOME`: Filesystem path to the parent directory containing SystemVerilog source code for the UVM library of the desired version. <BR>
-`UVMF_HOME`: Filesystem path to the parent directory containing source code (uvmf_base_pkg) for the UVM Frameworks library, a tool available from Mentor Graphics for generating baseline UVM projects. <BR>
-`QUESTA_MVC_HOME`: Filesystem path to the parent directory containing source code for Mentor Graphics QVIP, the verification library from which AHB UVM agents are pulled in the Caliptra UVM environment. <BR>
-`AVERY_SIM`: Filesystem path to the parent directory containing source code for Avery UVM VIP, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment. <BR>
-`AVERY_PLI`: Filesystem path to the parent directory containing source code for Avery UVM PLI, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment. <BR>
-`AVERY_AXI`: Filesystem path to the parent directory containing source code for Avery AXI VIP, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment. <BR>
+**Environment Variables**:
+Required for UVM simulation:
+- `UVM_HOME`: Filesystem path to the parent directory containing SystemVerilog source code for the UVM library of the desired version.
+- `UVMF_HOME`: Filesystem path to the parent directory containing source code (uvmf_base_pkg) for the UVM Frameworks library, a tool available from Mentor Graphics for generating baseline UVM projects.
+- `QUESTA_MVC_HOME`: Filesystem path to the parent directory containing source code for Mentor Graphics QVIP, the verification library from which AHB UVM agents are pulled in the Caliptra UVM environment.
+- `AVERY_SIM`: Filesystem path to the parent directory containing source code for Avery UVM VIP, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment.
+- `AVERY_PLI`: Filesystem path to the parent directory containing source code for Avery UVM PLI, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment.
+- `AVERY_AXI`: Filesystem path to the parent directory containing source code for Avery AXI VIP, the verification library from which AXI UVM agents are pulled in the Caliptra UVM environment.
 
-**Steps:**<BR>
+**Steps:**
 1. Compile UVM 1.1d library
 1. Compile the AHB/AXI VIP source
 1. Compile the Mentor Graphics UVM-Frameworks base library
@@ -297,9 +307,9 @@ Required for UVM simulation:<BR>
 1. Select a test to run from the set of tests in `Caliptra/src/integration/uvmf_caliptra_top/uvmf_template_output/project_benches/caliptra_top/tb/tests/src`
 1. Provide `+UVM_TESTNAME=<test>` argument to simulation
 
-### UVM Unit Test Steps: <BR>
+### UVM Unit Test Steps:
 
-**Description**:<BR>
+**Description**:
 The UVM Framework generation tool was used to create the baseline UVM testbench for verification of each IP component inside Caliptra. The following IP blocks have supported UVM testbenches:
 - [ECC](src/ecc/uvmf_ecc)
 - [HMAC](src/hmac/uvmf_2022)
@@ -308,13 +318,13 @@ The UVM Framework generation tool was used to create the baseline UVM testbench 
 - [PCRVault](src/pcrvault/uvmf_pv)
 - [SOC_IFC](src/soc_ifc/uvmf_soc_ifc)
 
-**Prerequisites**:<BR>
+**Prerequisites**:
 - QVIP 2021.2.1 for Mentor Graphics (provides the AHB VIP)
 - AXI VIP 2025.1 for Avery
 - UVM 1.1d installation
 - Mentor Graphics UVM-Framework installation
 
-**Steps:**<BR>
+**Steps:**
 1. Compile UVM 1.1d library
 1. Compile the AHB/AXI VIP source
 1. Compile the Mentor Graphics UVM-Frameworks base library
@@ -337,10 +347,12 @@ The UVM Framework generation tool was used to create the baseline UVM testbench 
 ## **Regression Tests** ##
 
 ### Standalone SystemVerilog Testbench Regression ###
+
 Only tests from the L0 Regression List should be run.
 The list is defined in the file [L0_regression.yml](https://github.com/chipsalliance/caliptra-rtl/blob/main/src/integration/stimulus/L0_regression.yml)
 
 ### UVM Regression ###
+
 The UVM simulation environment for `caliptra_top` uses a special set of validation firmware to generate stimulus as required for the test plan. This firmware suite is found in `src/integration/test_suites` and includes:
  - `caliptra_top`: A C-based program that emulates a minimal set of bringup functions similar to the function of the ROM. This C file transitions very early to either a the FMC image or Runtime image based on bringup (reset reason) conditions.
  - `caliptra_fmc`: A C-based program that emulates the functionality of the First Mutable Code. In this reduced-functionality validation implementation, the FMC code is a simple intermediary that runs from ICCM and serves to boot the Runtime Firmware.

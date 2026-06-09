@@ -1,4 +1,3 @@
-    
 // -------------------------------------------------
 // Contact: contact@lubis-eda.com
 // Author: Tobias Ludwig, Michael Schwarz

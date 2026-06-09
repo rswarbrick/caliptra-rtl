@@ -6,7 +6,7 @@
 {% macro class_definition(node) -%}
 {%- if class_needs_definition(node) %}
 // {{get_class_friendly_name(node)}}
-class {{get_class_name(node)}} extends uvm_reg;
+class {{get_class_name(node)}} extends dv_base_reg;
 {%- if use_uvm_factory %}
     `uvm_object_utils({{get_class_name(node)}})
 {%- endif %}
@@ -86,7 +86,7 @@ reg_bit_edge_cp : coverpoint reg_bit {
 //------------------------------------------------------------------------------
 {% macro child_insts(node) -%}
 {%- for field in node.fields() -%}
-rand uvm_reg_field {{get_inst_name(field)}};
+rand dv_base_reg_field {{get_inst_name(field)}};
 {% endfor -%}
 {%- endmacro %}
 
@@ -167,7 +167,7 @@ endfunction
 virtual function void build();
     {%- for field in node.fields() %}
     {%- if use_uvm_factory %}
-    this.{{get_inst_name(field)}} = uvm_reg_field::type_id::create("{{get_inst_name(field)}}");
+    this.{{get_inst_name(field)}} = dv_base_reg_field::type_id::create("{{get_inst_name(field)}}");
     {%- else %}
     this.{{get_inst_name(field)}} = new("{{get_inst_name(field)}}");
     {%- endif %}
@@ -227,7 +227,10 @@ foreach(this.{{get_inst_name(node)}}[{{utils.array_iterator_list(node)}}]) begin
     this.{{get_inst_name(node)}}{{utils.array_iterator_suffix(node)}} = new($sformatf("{{get_inst_name(node)}}{{utils.array_suffix_format(node)}}", {{utils.array_iterator_list(node)}}));
     {%- endif %}
     this.{{get_inst_name(node)}}{{utils.array_iterator_suffix(node)}}.configure(this);
-    {{add_hdl_path_slices(node, get_inst_name(node) + utils.array_iterator_suffix(node))|trim|indent}}
+    {%- set _slices = add_hdl_path_slices(node, get_inst_name(node) + utils.array_iterator_suffix(node))|trim -%}
+    {%- if _slices %}
+    {{_slices|indent}}
+    {%- endif %}
     this.{{get_inst_name(node)}}{{utils.array_iterator_suffix(node)}}.build();
     this.default_map.add_reg(this.{{get_inst_name(node)}}{{utils.array_iterator_suffix(node)}}, {{get_array_address_offset_expr(node)}});
 end
@@ -238,7 +241,10 @@ this.{{get_inst_name(node)}} = {{get_class_name(node)}}::type_id::create("{{get_
 this.{{get_inst_name(node)}} = new("{{get_inst_name(node)}}");
 {%- endif %}
 this.{{get_inst_name(node)}}.configure(this);
-{{add_hdl_path_slices(node, get_inst_name(node))|trim}}
+{%- set _slices = add_hdl_path_slices(node, get_inst_name(node))|trim -%}
+{%- if _slices %}
+{{_slices}}
+{%- endif %}
 this.{{get_inst_name(node)}}.build();
 this.default_map.add_reg(this.{{get_inst_name(node)}}, {{"'h%x" % node.raw_address_offset}});
 {%- endif %}

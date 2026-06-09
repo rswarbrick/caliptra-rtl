@@ -1,21 +1,37 @@
 ---
-provides: [sha3_ctrl]
+# OpenTitan SHA3 primitives (Keccak core + padding). Self-contained low-level
+# building blocks; depended on by sha3_kmac and sha3_ctrl.
+provides: [ot_sha3_prim]
 schema_version: 2.4.0
 requires:
   - libs
   - caliptra_prim
-  - caliptra_tlul_pkg
 targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
     files:
       - $COMPILE_ROOT/rtl/ot_sha3_pkg.sv
-      - $COMPILE_ROOT/rtl/kmac_pkg.sv
-      - $COMPILE_ROOT/rtl/kmac_reg_pkg.sv
-      - $COMPILE_ROOT/rtl/sha3_param_pkg.sv
-      - $COMPILE_ROOT/rtl/sha3_reg_pkg.sv
       - $COMPILE_ROOT/rtl/ot_keccak_2share.sv
       - $COMPILE_ROOT/rtl/ot_keccak_round.sv
+      - $COMPILE_ROOT/rtl/ot_sha3pad.sv
+      - $COMPILE_ROOT/rtl/ot_sha3.sv
+---
+# KMAC core (OpenTitan-derived), distinct from the legacy implementation in
+# src/kmac/. Named sha3_kmac because it lives under src/sha3/ and is
+# composed with the ot_sha3 primitives by sha3_ctrl.
+provides: [sha3_kmac]
+schema_version: 2.4.0
+requires:
+  - libs
+  - caliptra_prim
+  - caliptra_tlul_pkg
+  - ot_sha3_prim
+targets:
+  rtl:
+    directories: [$COMPILE_ROOT/rtl]
+    files:
+      - $COMPILE_ROOT/rtl/kmac_pkg.sv
+      - $COMPILE_ROOT/rtl/kmac_reg_pkg.sv
       - $COMPILE_ROOT/rtl/kmac_app.sv
       - $COMPILE_ROOT/rtl/kmac_core.sv
       - $COMPILE_ROOT/rtl/kmac_entropy.sv
@@ -24,9 +40,25 @@ targets:
       - $COMPILE_ROOT/rtl/kmac_reg_top.sv
       - $COMPILE_ROOT/rtl/kmac_staterd.sv
       - $COMPILE_ROOT/rtl/kmac.sv
-      - $COMPILE_ROOT/rtl/ot_sha3pad.sv
-      - $COMPILE_ROOT/rtl/sha3_reg.sv
-      - $COMPILE_ROOT/rtl/ot_sha3.sv
+---
+# SHA3 controller wrapper: parameter pkg, generated register file, and the
+# sha3_ctrl top that exposes ot_sha3 + sha3_kmac through a Caliptra register
+# interface. Public entry point for SHA3 / cSHAKE / KMAC operations.
+provides: [sha3_ctrl]
+schema_version: 2.4.0
+requires:
+  - libs
+  - caliptra_prim
+  - caliptra_tlul_pkg
+  - ot_sha3_prim
+  - sha3_kmac
+targets:
+  rtl:
+    directories: [$COMPILE_ROOT/rtl]
+    files:
+      - $COMPILE_ROOT/rtl/sha3_param_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/sha3_reg_pkg.sv
+      - $COMPILE_ROOT/rtl/generated/sha3_reg.sv
       - $COMPILE_ROOT/rtl/sha3_ctrl.sv
     tops: [sha3_ctrl]
   rtl_lint:

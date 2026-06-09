@@ -1,7 +1,11 @@
 ---
+# Caliptra's fork of the OpenTitan TileLink-UL adapter library: the
+# caliptra_tlul_pkg SV package plus the full set of TL-UL adapter, integrity
+# generation/check, FIFO, socket, and SRAM-bridge modules. Pulled in by any
+# IP that needs to interoperate with TL-UL.
 provides: [caliptra_tlul_pkg]
 schema_version: 2.4.0
-requires: 
+requires:
   - edn_pkg
   - caliptra_prim_pkg
   - caliptra_prim_secded

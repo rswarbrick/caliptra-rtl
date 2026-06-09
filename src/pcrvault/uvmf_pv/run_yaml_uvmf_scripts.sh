@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 #export UVMF_HOME='/home/cad/tools/mentor/uvmf/UVMF_2022.3'
 #python ${UVMF_HOME}/scripts/yaml2uvmf.py --merge_source uvmf_template_output \
 python ${UVMF_HOME}/scripts/yaml2uvmf.py \

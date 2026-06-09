@@ -1,4 +1,8 @@
 ---
+# Top-level Verilog `defines header (config_defines.svh) controlling
+# elaboration-time configuration of caliptra_top (memory sizes, RV core
+# parameters, build-mode selectors). Pulled in everywhere `defines from this
+# file are referenced.
 provides: [caliptra_top_defines]
 schema_version: 2.4.0
 targets:
@@ -11,6 +15,9 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/config_defines.svh
 ---
+# Caliptra register-map defines header (caliptra_reg_defines.svh) — address
+# constants and reg-offset macros for the standalone (non-subsystem) build.
+# Sibling caliptra_top_reg_ss_defines is the subsystem-mode variant.
 provides: [caliptra_top_reg_defines]
 schema_version: 2.4.0
 targets:
@@ -23,6 +30,9 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/caliptra_reg/caliptra_reg_defines.svh
 ---
+# Caliptra register-map defines header for subsystem-mode builds (the
+# caliptra_reg_ss directory variant). Selected in place of
+# caliptra_top_reg_defines by caliptra_top_ss_mode.
 provides: [caliptra_top_reg_ss_defines]
 schema_version: 2.4.0
 targets:
@@ -35,11 +45,14 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/caliptra_reg_ss/caliptra_reg_defines.svh
 ---
-provides: [caliptra_top]
+# Shared owner of the caliptra_top integration RTL (caliptra_top.sv and the
+# boot_flow_monitor). Aggregates every leaf IP block via `requires:` so the
+# caliptra_top and caliptra_top_ss_mode variants only differ in their
+# reg-defines and elaboration-time `+define+` set.
+provides: [caliptra_top_rtl]
 schema_version: 2.4.0
 requires:
   - caliptra_top_defines
-  - caliptra_top_reg_defines
   - libs
   - kv_defines_pkg
   - pv_defines_pkg
@@ -67,6 +80,17 @@ targets:
     files:
       - $COMPILE_ROOT/rtl/caliptra_top.sv
       - $COMPILE_ROOT/rtl/boot_flow_monitor.sv
+---
+# Default (standalone) caliptra_top elaboration variant: caliptra_top_rtl
+# bound to the standalone reg-defines, with internal-TRNG and AXI DMA addr
+# width selected via `+define+`. Used by lint and most non-subsystem flows.
+provides: [caliptra_top]
+schema_version: 2.4.0
+requires:
+  - caliptra_top_rtl
+  - caliptra_top_reg_defines
+targets:
+  rtl:
     tops: [caliptra_top]
   rtl_lint:
     waiver_files:
@@ -85,38 +109,16 @@ global:
       default:
         - '-assert svaext'
 ---
+# Subsystem-mode caliptra_top elaboration variant: same RTL as caliptra_top
+# but bound to caliptra_top_reg_ss_defines and built with
+# +define+CALIPTRA_MODE_SUBSYSTEM. Used in SoC subsystem integrations.
 provides: [caliptra_top_ss_mode]
 schema_version: 2.4.0
 requires:
-  - caliptra_top_defines
+  - caliptra_top_rtl
   - caliptra_top_reg_ss_defines
-  - libs
-  - kv_defines_pkg
-  - pv_defines_pkg
-  - dv_defines_pkg
-  - el2_veer_pkg
-  - el2_veer_wrapper
-  - ahb_lite_bus
-  - sha512_ctrl
-  - sha256_ctrl
-  - doe_ctrl
-  - hmac_ctrl
-  - ecc_top
-  - abr_top
-  - keyvault
-  - pcrvault
-  - datavault
-  - soc_ifc_top
-  - entropy_src
-  - csrng
-  - aes
-  - sha3_ctrl
 targets:
   rtl:
-    directories: [$COMPILE_ROOT/rtl]
-    files:
-      - $COMPILE_ROOT/rtl/caliptra_top.sv
-      - $COMPILE_ROOT/rtl/boot_flow_monitor.sv
     tops: [caliptra_top]
   rtl_lint:
     waiver_files:
@@ -137,10 +139,15 @@ global:
         - '+define+CALIPTRA_INTERNAL_TRNG'
         - '-assert svaext'
 ---
+# Shared caliptra_top testbench infrastructure: TB packages, DPI C sources
+# (TCP server for firmware co-sim, JTAG DPI), DMA transfer generator, VeeR
+# SRAM export, services/BFM/AXI-complex helpers, the caliptra_top cover
+# binds, and every IP coverage provider. An umbrella for all
+# caliptra_top_tb* variants.
 provides: [caliptra_top_tb_pkg]
 schema_version: 2.4.0
 requires:
-  - asserts
+  - caliptra_top_asserts
   - axi_pc
   - libs
   - caliptra_axi_sram
@@ -153,8 +160,8 @@ requires:
   - hmac_drbg_coverage
   - ecc_coverage
   - soc_ifc_coverage
-  - pcrvault_cov
-  - keyvault_cov
+  - pcrvault_coverage
+  - keyvault_coverage
   - clp_abr_coverage
   - axi_dma_coverage
   - aes_coverage
@@ -195,10 +202,13 @@ targets:
       - $COMPILE_ROOT/coverage/caliptra_top_cov_bind.sv
       - $COMPILE_ROOT/test_suites/libs/jtagdpi/jtagdpi.sv
 ---
-provides: [caliptra_top_tb]
+# Shared owner of the caliptra_top_tb top-level SV. Consumed by the
+# caliptra_top_tb / caliptra_top_trng_tb / caliptra_top_ss_mode_tb variants,
+# which differ only in their caliptra_top* dependency and elaboration-time
+# +define+ set.
+provides: [caliptra_top_tb_rtl]
 schema_version: 2.4.0
 requires:
-  - caliptra_top
   - caliptra_top_tb_pkg
 targets:
   tb:
@@ -206,8 +216,20 @@ targets:
       - $COMPILE_ROOT/tb
     files:
       - $COMPILE_ROOT/tb/caliptra_top_tb.sv
+---
+# Default caliptra_top testbench variant: caliptra_top DUT (standalone reg
+# defines) + the shared caliptra_top_tb_rtl. The pre_exec block stages
+# vector-generation binaries/scripts (ECC, DOE, SHA256-wntz, MLDSA, ML-KEM)
+# into the run dir so the testbench can self-check against fresh vectors.
+provides: [caliptra_top_tb]
+schema_version: 2.4.0
+requires:
+  - caliptra_top
+  - caliptra_top_tb_rtl
+targets:
+  tb:
     tops: [caliptra_top_tb]
-  sim:    
+  sim:
     pre_exec: |
         $MSFT_SCRIPTS_DIR/run_test_makefile
         echo "[PRE-EXEC] Copying ECC vector generator to ${pwd}"
@@ -236,7 +258,7 @@ targets:
         cp $COMPILE_ROOT/../../submodules/adams-bridge/src/abr_top/uvmf/ML_KEM_ref/ml-kem/utils.py ml-kem/
 
     post_exec: 'if [[ -f ./cm.log ]]; then rm ./cm.log; else echo "Did not find cm.log"; fi'
-                
+
 global:
   tool:
     vcs:
@@ -270,17 +292,16 @@ global:
         # correctly in the output vdb.
         - '-suppress=VCM-HFUFR'
 ---
+# caliptra_top testbench variant built with +define+CALIPTRA_INTERNAL_TRNG
+# enabled (the default caliptra_top_tb leaves it off). Uses the same DUT
+# and TB sources; vector-staging pre_exec is duplicated.
 provides: [caliptra_top_trng_tb]
 schema_version: 2.4.0
 requires:
   - caliptra_top
-  - caliptra_top_tb_pkg
+  - caliptra_top_tb_rtl
 targets:
   tb:
-    directories:
-      - $COMPILE_ROOT/tb
-    files:
-      - $COMPILE_ROOT/tb/caliptra_top_tb.sv
     tops: [caliptra_top_tb]
   sim:
     pre_exec: |
@@ -334,18 +355,17 @@ global:
         # correctly in the output vdb.
         - '-suppress=VCM-HFUFR'
 
----  
+---
+# Subsystem-mode caliptra_top testbench variant: pairs caliptra_top_ss_mode
+# (subsystem reg defines + CALIPTRA_MODE_SUBSYSTEM) with the shared TB
+# sources. Vector-staging pre_exec mirrors the other variants.
 provides: [caliptra_top_ss_mode_tb]
 schema_version: 2.4.0
 requires:
   - caliptra_top_ss_mode
-  - caliptra_top_tb_pkg
+  - caliptra_top_tb_rtl
 targets:
   tb:
-    directories:
-      - $COMPILE_ROOT/tb
-    files:
-      - $COMPILE_ROOT/tb/caliptra_top_tb.sv
     tops: [caliptra_top_tb]
   sim:
     pre_exec: |
@@ -374,9 +394,9 @@ targets:
         cp $COMPILE_ROOT/../../submodules/adams-bridge/src/abr_top/uvmf/ML_KEM_ref/ml-kem/ml_kem.py ml-kem/
         cp $COMPILE_ROOT/../../submodules/adams-bridge/src/abr_top/uvmf/ML_KEM_ref/ml-kem/Module.py ml-kem/
         cp $COMPILE_ROOT/../../submodules/adams-bridge/src/abr_top/uvmf/ML_KEM_ref/ml-kem/utils.py ml-kem/
-        
+
     post_exec: 'if [[ -f ./cm.log ]]; then rm ./cm.log; else echo "Did not find cm.log"; fi'
-                
+
 global:
   tool:
     vcs:

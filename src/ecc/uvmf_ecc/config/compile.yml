@@ -1,4 +1,8 @@
 ---
+# UVMF-generated UVM testbench for ecc_top: interface packages (ECC_in/out),
+# environment package, parameters/sequences/tests, and the hdl_top/hvl_top
+# tops. The pre_exec stages the secp384r1 reference vector generator into
+# the run dir so the bench can self-check.
 provides: [uvmf_ecc]
 schema_version: 2.4.0
 requires:
@@ -20,7 +24,7 @@ targets:
       - ${COMPILE_ROOT}/uvmf_template_output/project_benches/ECC/tb/tests
       - ${COMPILE_ROOT}/uvmf_template_output/project_benches/ECC/tb/testbench
     files:
-#      - ${COMPILE_ROOT}/../rtl/ecc_reg_uvm.sv
+#      - ${COMPILE_ROOT}/../dv/reg_model/ecc_reg_uvm.sv
       - ${COMPILE_ROOT}/uvmf_template_output/verification_ip/interface_packages/ECC_in_pkg/ECC_in_pkg_hdl.sv
       - ${COMPILE_ROOT}/uvmf_template_output/verification_ip/interface_packages/ECC_in_pkg/ECC_in_pkg.sv
       - ${COMPILE_ROOT}/uvmf_template_output/verification_ip/interface_packages/ECC_in_pkg/src/ECC_in_driver_bfm.sv

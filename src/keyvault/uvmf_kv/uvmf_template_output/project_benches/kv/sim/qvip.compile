@@ -1,4 +1,3 @@
-
 incdir:
   - $QUESTA_MVC_HOME/questa_mvc_src/sv
   - $QVIP_AHB_LITE_SLAVE_DIR_NAME
