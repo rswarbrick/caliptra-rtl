@@ -26,6 +26,7 @@
     click.flit-core = [];
     colorama.hatchling = [];
     commonmark.setuptools = [];
+    compile-to-core.hatchling = [];
     crcmod.setuptools = [];
     cssselect.setuptools = [];
     cssutils.setuptools = [];
