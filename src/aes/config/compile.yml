@@ -25,6 +25,7 @@ schema_version: 2.4.0
 requires:
   - libs
   - aes_pkg
+  - kv_defines_pkg
 targets:
   tb:
     directories: 
@@ -39,6 +40,7 @@ requires:
   - aes_pkg
   - kv_defines_pkg
   - caliptra_tlul_pkg
+  - caliptra_top_reg_defines
 targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]

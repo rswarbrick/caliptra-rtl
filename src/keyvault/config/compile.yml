@@ -21,6 +21,9 @@ targets:
 ---
 provides: [keyvault_cov]
 schema_version: 2.4.0
+requires:
+  - caliptra_prim_pkg
+  - kv_defines_pkg
 targets:
   tb:
     directories:
