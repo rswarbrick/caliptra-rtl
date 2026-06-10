@@ -1,9 +1,10 @@
 ---
-provides: [clp_abr_coverage]  
+provides: [clp_abr_coverage]
 schema_version: 2.4.0
-requires: 
+requires:
   - abr_top
   - abr_coverage
+  - kv_defines_pkg
 targets:
   tb:
     directories: 

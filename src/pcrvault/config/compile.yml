@@ -24,6 +24,8 @@ targets:
 ---
 provides: [pcrvault_cov]
 schema_version: 2.4.0
+requires:
+  - pv_defines_pkg
 targets:
   tb:
     directories:
@@ -35,9 +37,10 @@ targets:
 ---
 provides: [pcrvault]
 schema_version: 2.4.0
-requires: 
+requires:
   - libs
   - pv_defines_pkg
+  - caliptra_prim_pkg
 targets:
   rtl:
     directories: [$COMPILE_ROOT/rtl]
