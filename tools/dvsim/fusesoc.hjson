@@ -2,17 +2,22 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 {
-  sv_flist_gen_cmd:   fusesoc
-  fusesoc_core_:      "{eval_cmd} echo \"{fusesoc_core}\" | tr ':' '_'"
-  sv_flist_gen_opts:  ["{fusesoc_cores_root_dirs}",
+  pre_build_cmds: ["cd {proj_root} && compile-to-core . {scratch_path}/cores"]
+
+  sv_flist_gen_cmd:   "fusesoc"
+  sv_flist_gen_dir:   "{build_dir}/fusesoc-work"
+
+  sv_flist_gen_opts:  ["--cores-root={scratch_path}/cores",
+                       "--cores-root={proj_root}/src",
+                       "--cores-root={proj_root}/tools/dv-classes",
                        "run",
                        "{sv_flist_gen_flags}",
                        "--target=sim",
-                       "--work-root={build_dir}/fusesoc-work",
+                       "--work-root={sv_flist_gen_dir}",
                        "--setup",
                        "{fusesoc_core}",
                       ]
-  fusesoc_cores_root_dirs: ["--cores-root {proj_root}/hw"]
-  sv_flist_gen_dir:   "{build_dir}/fusesoc-work"
+
+  fusesoc_core_:      "{eval_cmd} echo \"{fusesoc_core}\" | tr ':' '_'"
   sv_flist:           "{sv_flist_gen_dir}/{fusesoc_core_}.scr"
 }
