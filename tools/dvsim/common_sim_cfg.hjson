@@ -82,6 +82,10 @@
     { dut_instance: "{dut_instance}" }
   ]
 
+  // This is a placeholder for a variable that dvsim expects will exist. In OpenTitan, it points at
+  // a Python script that builds SW collateral for a simulation.
+  sw_build_cmd: ["true"]
+
   // Build modes are collection of build_opts and run_opts
   //
   // To define a build mode that overrides these flags, add something
