@@ -4,8 +4,8 @@
 package aes_clp_reg_pkg;
 
     localparam AES_CLP_REG_DATA_WIDTH = 32;
-    localparam AES_CLP_REG_MIN_ADDR_WIDTH = 12;
-    localparam AES_CLP_REG_SIZE = 'h88c;
+    localparam AES_CLP_REG_MIN_ADDR_WIDTH = 11;
+    localparam AES_CLP_REG_SIZE = 'h614;
 
     typedef struct packed{
         logic [31:0] next;
@@ -167,12 +167,6 @@ package aes_clp_reg_pkg;
     } aes_clp_reg__intr_block_t__in_t;
 
     typedef struct packed{
-        logic rd_ack;
-        logic [31:0] rd_data;
-        logic wr_ack;
-    } aes__external__in_t;
-
-    typedef struct packed{
         logic reset_b;
         logic error_reset_b;
         aes_clp_reg__AES_NAME__in_t [2-1:0]AES_NAME;
@@ -182,7 +176,6 @@ package aes_clp_reg_pkg;
         kv_write_ctrl_reg__in_t AES_KV_WR_CTRL;
         kv_status_reg__in_t AES_KV_WR_STATUS;
         aes_clp_reg__intr_block_t__in_t intr_block_rf;
-        aes__external__in_t aes_core;
     } aes_clp_reg__in_t;
 
     typedef struct packed{
@@ -312,20 +305,11 @@ package aes_clp_reg_pkg;
     } aes_clp_reg__intr_block_t__out_t;
 
     typedef struct packed{
-        logic req;
-        logic [7:0] addr;
-        logic req_is_wr;
-        logic [31:0] wr_data;
-        logic [31:0] wr_biten;
-    } aes__external__out_t;
-
-    typedef struct packed{
         aes_clp_reg__ENTROPY_IF_SEED__out_t [9-1:0]ENTROPY_IF_SEED;
         aes_clp_reg__CTRL0__out_t CTRL0;
         kv_read_ctrl_reg__out_t AES_KV_RD_KEY_CTRL;
         kv_write_ctrl_reg__out_t AES_KV_WR_CTRL;
         aes_clp_reg__intr_block_t__out_t intr_block_rf;
-        aes__external__out_t aes_core;
     } aes_clp_reg__out_t;
 
     typedef enum logic [1:0] {
@@ -334,6 +318,6 @@ package aes_clp_reg_pkg;
         kv_status_reg__ERROR__kv_error_e__KV_WRITE_FAIL = 'h2
     } kv_status_reg__ERROR__kv_error_e_e;
 
-    localparam AES_CLP_REG_ADDR_WIDTH = 32'd12;
+    localparam AES_CLP_REG_ADDR_WIDTH = 32'd11;
 
 endpackage

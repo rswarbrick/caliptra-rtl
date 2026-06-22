@@ -7,7 +7,7 @@ module aes_clp_reg (
 
         input wire s_cpuif_req,
         input wire s_cpuif_req_is_wr,
-        input wire [11:0] s_cpuif_addr,
+        input wire [10:0] s_cpuif_addr,
         input wire [31:0] s_cpuif_wr_data,
         input wire [31:0] s_cpuif_wr_biten,
         output wire s_cpuif_req_stall_wr,
@@ -27,7 +27,7 @@ module aes_clp_reg (
     //--------------------------------------------------------------------------
     logic cpuif_req;
     logic cpuif_req_is_wr;
-    logic [11:0] cpuif_addr;
+    logic [10:0] cpuif_addr;
     logic [31:0] cpuif_wr_data;
     logic [31:0] cpuif_wr_biten;
     logic cpuif_req_stall_wr;
@@ -54,12 +54,10 @@ module aes_clp_reg (
     assign s_cpuif_wr_err = cpuif_wr_err;
 
     logic cpuif_req_masked;
-    logic external_pending;
 
     // Read & write latencies are balanced. Stalls not required
-    // except if external
-    assign cpuif_req_stall_rd = external_pending;
-    assign cpuif_req_stall_wr = external_pending;
+    assign cpuif_req_stall_rd = '0;
+    assign cpuif_req_stall_wr = '0;
     assign cpuif_req_masked = cpuif_req
                             & !(!cpuif_req_is_wr & cpuif_req_stall_rd)
                             & !(cpuif_req_is_wr & cpuif_req_stall_wr);
@@ -97,13 +95,10 @@ module aes_clp_reg (
             logic error3_intr_count_incr_r;
             logic notif_cmd_done_intr_count_incr_r;
         } intr_block_rf;
-        logic aes_core;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
     logic decoded_err;
-    logic decoded_req_is_external;
-
-    logic [11:0] decoded_addr;
+    logic [10:0] decoded_addr;
     logic decoded_req;
     logic decoded_req_is_wr;
     logic [31:0] decoded_wr_data;
@@ -112,64 +107,42 @@ module aes_clp_reg (
     always_comb begin
         automatic logic is_valid_addr;
         automatic logic is_valid_rw;
-        automatic logic is_external;
-        is_external = '0;
         is_valid_addr = '1; // No valid address check
         is_valid_rw = '1; // No valid RW check
         for(int i0=0; i0<2; i0++) begin
-            decoded_reg_strb.AES_NAME[i0] = cpuif_req_masked & (cpuif_addr == 12'h0 + (12)'(i0) * 12'h4) & !cpuif_req_is_wr;
+            decoded_reg_strb.AES_NAME[i0] = cpuif_req_masked & (cpuif_addr == 11'h0 + (11)'(i0) * 11'h4) & !cpuif_req_is_wr;
         end
         for(int i0=0; i0<2; i0++) begin
-            decoded_reg_strb.AES_VERSION[i0] = cpuif_req_masked & (cpuif_addr == 12'h8 + (12)'(i0) * 12'h4) & !cpuif_req_is_wr;
+            decoded_reg_strb.AES_VERSION[i0] = cpuif_req_masked & (cpuif_addr == 11'h8 + (11)'(i0) * 11'h4) & !cpuif_req_is_wr;
         end
         for(int i0=0; i0<9; i0++) begin
-            decoded_reg_strb.ENTROPY_IF_SEED[i0] = cpuif_req_masked & (cpuif_addr == 12'h110 + (12)'(i0) * 12'h4) & cpuif_req_is_wr;
+            decoded_reg_strb.ENTROPY_IF_SEED[i0] = cpuif_req_masked & (cpuif_addr == 11'h110 + (11)'(i0) * 11'h4) & cpuif_req_is_wr;
         end
-        decoded_reg_strb.CTRL0 = cpuif_req_masked & (cpuif_addr == 12'h134);
-        decoded_reg_strb.AES_KV_RD_KEY_CTRL = cpuif_req_masked & (cpuif_addr == 12'h200);
-        decoded_reg_strb.AES_KV_RD_KEY_STATUS = cpuif_req_masked & (cpuif_addr == 12'h204) & !cpuif_req_is_wr;
-        decoded_reg_strb.AES_KV_WR_CTRL = cpuif_req_masked & (cpuif_addr == 12'h208);
-        decoded_reg_strb.AES_KV_WR_STATUS = cpuif_req_masked & (cpuif_addr == 12'h20c) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.global_intr_en_r = cpuif_req_masked & (cpuif_addr == 12'h400);
-        decoded_reg_strb.intr_block_rf.error_intr_en_r = cpuif_req_masked & (cpuif_addr == 12'h404);
-        decoded_reg_strb.intr_block_rf.notif_intr_en_r = cpuif_req_masked & (cpuif_addr == 12'h408);
-        decoded_reg_strb.intr_block_rf.error_global_intr_r = cpuif_req_masked & (cpuif_addr == 12'h40c) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.notif_global_intr_r = cpuif_req_masked & (cpuif_addr == 12'h410) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.error_internal_intr_r = cpuif_req_masked & (cpuif_addr == 12'h414);
-        decoded_reg_strb.intr_block_rf.notif_internal_intr_r = cpuif_req_masked & (cpuif_addr == 12'h418);
-        decoded_reg_strb.intr_block_rf.error_intr_trig_r = cpuif_req_masked & (cpuif_addr == 12'h41c);
-        decoded_reg_strb.intr_block_rf.notif_intr_trig_r = cpuif_req_masked & (cpuif_addr == 12'h420);
-        decoded_reg_strb.intr_block_rf.error0_intr_count_r = cpuif_req_masked & (cpuif_addr == 12'h500);
-        decoded_reg_strb.intr_block_rf.error1_intr_count_r = cpuif_req_masked & (cpuif_addr == 12'h504);
-        decoded_reg_strb.intr_block_rf.error2_intr_count_r = cpuif_req_masked & (cpuif_addr == 12'h508);
-        decoded_reg_strb.intr_block_rf.error3_intr_count_r = cpuif_req_masked & (cpuif_addr == 12'h50c);
-        decoded_reg_strb.intr_block_rf.notif_cmd_done_intr_count_r = cpuif_req_masked & (cpuif_addr == 12'h580);
-        decoded_reg_strb.intr_block_rf.error0_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 12'h600) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.error1_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 12'h604) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.error2_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 12'h608) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.error3_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 12'h60c) & !cpuif_req_is_wr;
-        decoded_reg_strb.intr_block_rf.notif_cmd_done_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 12'h610) & !cpuif_req_is_wr;
-        decoded_reg_strb.aes_core = cpuif_req_masked & (cpuif_addr >= 12'h800) & (cpuif_addr <= 12'h800 + 12'h8b);
-        is_external |= cpuif_req_masked & (cpuif_addr >= 12'h800) & (cpuif_addr <= 12'h800 + 12'h8b);
-        is_valid_rw |= cpuif_req_masked & (cpuif_addr >= 12'h800) & (cpuif_addr <= 12'h800 + 12'h8b);
+        decoded_reg_strb.CTRL0 = cpuif_req_masked & (cpuif_addr == 11'h134);
+        decoded_reg_strb.AES_KV_RD_KEY_CTRL = cpuif_req_masked & (cpuif_addr == 11'h200);
+        decoded_reg_strb.AES_KV_RD_KEY_STATUS = cpuif_req_masked & (cpuif_addr == 11'h204) & !cpuif_req_is_wr;
+        decoded_reg_strb.AES_KV_WR_CTRL = cpuif_req_masked & (cpuif_addr == 11'h208);
+        decoded_reg_strb.AES_KV_WR_STATUS = cpuif_req_masked & (cpuif_addr == 11'h20c) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.global_intr_en_r = cpuif_req_masked & (cpuif_addr == 11'h400);
+        decoded_reg_strb.intr_block_rf.error_intr_en_r = cpuif_req_masked & (cpuif_addr == 11'h404);
+        decoded_reg_strb.intr_block_rf.notif_intr_en_r = cpuif_req_masked & (cpuif_addr == 11'h408);
+        decoded_reg_strb.intr_block_rf.error_global_intr_r = cpuif_req_masked & (cpuif_addr == 11'h40c) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.notif_global_intr_r = cpuif_req_masked & (cpuif_addr == 11'h410) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.error_internal_intr_r = cpuif_req_masked & (cpuif_addr == 11'h414);
+        decoded_reg_strb.intr_block_rf.notif_internal_intr_r = cpuif_req_masked & (cpuif_addr == 11'h418);
+        decoded_reg_strb.intr_block_rf.error_intr_trig_r = cpuif_req_masked & (cpuif_addr == 11'h41c);
+        decoded_reg_strb.intr_block_rf.notif_intr_trig_r = cpuif_req_masked & (cpuif_addr == 11'h420);
+        decoded_reg_strb.intr_block_rf.error0_intr_count_r = cpuif_req_masked & (cpuif_addr == 11'h500);
+        decoded_reg_strb.intr_block_rf.error1_intr_count_r = cpuif_req_masked & (cpuif_addr == 11'h504);
+        decoded_reg_strb.intr_block_rf.error2_intr_count_r = cpuif_req_masked & (cpuif_addr == 11'h508);
+        decoded_reg_strb.intr_block_rf.error3_intr_count_r = cpuif_req_masked & (cpuif_addr == 11'h50c);
+        decoded_reg_strb.intr_block_rf.notif_cmd_done_intr_count_r = cpuif_req_masked & (cpuif_addr == 11'h580);
+        decoded_reg_strb.intr_block_rf.error0_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 11'h600) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.error1_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 11'h604) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.error2_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 11'h608) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.error3_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 11'h60c) & !cpuif_req_is_wr;
+        decoded_reg_strb.intr_block_rf.notif_cmd_done_intr_count_incr_r = cpuif_req_masked & (cpuif_addr == 11'h610) & !cpuif_req_is_wr;
         decoded_err = '0;
-        decoded_req_is_external = is_external;
-    end
-    logic external_wr_ack;
-    logic external_rd_ack;
-    always_ff @(posedge clk or negedge hwif_in.reset_b) begin
-        if(~hwif_in.reset_b) begin
-            external_pending <= '0;
-        end else begin
-            if(decoded_req_is_external & ~external_wr_ack & ~external_rd_ack) external_pending <= '1;
-            else if(external_wr_ack | external_rd_ack) external_pending <= '0;
-            `ifndef SYNTHESIS
-                assert_bad_ext_wr_ack: assert(!external_wr_ack || (external_pending | decoded_req_is_external))
-                    else $error("An external wr_ack strobe was asserted when no external request was active");
-                assert_bad_ext_rd_ack: assert(!external_rd_ack || (external_pending | decoded_req_is_external))
-                    else $error("An external rd_ack strobe was asserted when no external request was active");
-            `endif
-        end
     end
 
     // Pass down signals to next stage
@@ -1925,52 +1898,20 @@ module aes_clp_reg (
             end
         end
     end
-    // External region: aes_clp_reg.aes_core
-    assign hwif_out.aes_core.req = decoded_reg_strb.aes_core;
-    assign hwif_out.aes_core.addr = decoded_addr[7:0];
-    assign hwif_out.aes_core.req_is_wr = decoded_req_is_wr;
-    assign hwif_out.aes_core.wr_data = decoded_wr_data;
-    assign hwif_out.aes_core.wr_biten = decoded_wr_biten;
 
     //--------------------------------------------------------------------------
     // Write response
     //--------------------------------------------------------------------------
-    always_comb begin
-        automatic logic wr_ack;
-        wr_ack = '0;
-        wr_ack |= hwif_in.aes_core.wr_ack;
-        external_wr_ack = wr_ack;
-    end
-    assign cpuif_wr_ack = external_wr_ack | (decoded_req & decoded_req_is_wr & ~decoded_req_is_external);
+    assign cpuif_wr_ack = decoded_req & decoded_req_is_wr;
     // Writes are always granted with no error response
     assign cpuif_wr_err = '0;
 
     //--------------------------------------------------------------------------
     // Readback
     //--------------------------------------------------------------------------
-    logic readback_external_rd_ack_c;
-    always_comb begin
-        automatic logic rd_ack;
-        rd_ack = '0;
-        rd_ack |= hwif_in.aes_core.rd_ack;
-        readback_external_rd_ack_c = rd_ack;
-    end
 
-    logic readback_external_rd_ack;
-
-    assign readback_external_rd_ack = readback_external_rd_ack_c;
-
-    logic [11:0] rd_mux_addr;
-    logic [11:0] pending_rd_addr;
-    // Hold read mux address to guarantee it is stable throughout any external accesses
-    always_ff @(posedge clk or negedge hwif_in.reset_b) begin
-        if(~hwif_in.reset_b) begin
-            pending_rd_addr <= '0;
-        end else begin
-            if(decoded_req) pending_rd_addr <= decoded_addr;
-        end
-    end
-    assign rd_mux_addr = decoded_req ? decoded_addr : pending_rd_addr;
+    logic [10:0] rd_mux_addr;
+    assign rd_mux_addr = decoded_addr;
 
     logic readback_err;
     logic readback_done;
@@ -1979,30 +1920,30 @@ module aes_clp_reg (
         automatic logic [31:0] readback_data_var;
         readback_data_var = '0;
         for(int i0=0; i0<2; i0++) begin
-            if(rd_mux_addr == 12'h0 + (12)'(i0) * 12'h4) begin
+            if(rd_mux_addr == 11'h0 + (11)'(i0) * 11'h4) begin
                 readback_data_var[31:0] = hwif_in.AES_NAME[i0].NAME.next;
             end
         end
         for(int i0=0; i0<2; i0++) begin
-            if(rd_mux_addr == 12'h8 + (12)'(i0) * 12'h4) begin
+            if(rd_mux_addr == 11'h8 + (11)'(i0) * 11'h4) begin
                 readback_data_var[31:0] = hwif_in.AES_VERSION[i0].VERSION.next;
             end
         end
-        if(rd_mux_addr == 12'h134) begin
+        if(rd_mux_addr == 11'h134) begin
             readback_data_var[0] = field_storage.CTRL0.ENDIAN_SWAP.value;
         end
-        if(rd_mux_addr == 12'h200) begin
+        if(rd_mux_addr == 11'h200) begin
             readback_data_var[0] = field_storage.AES_KV_RD_KEY_CTRL.read_en.value;
             readback_data_var[5:1] = field_storage.AES_KV_RD_KEY_CTRL.read_entry.value;
             readback_data_var[6] = field_storage.AES_KV_RD_KEY_CTRL.pcr_hash_extend.value;
             readback_data_var[31:7] = field_storage.AES_KV_RD_KEY_CTRL.rsvd.value;
         end
-        if(rd_mux_addr == 12'h204) begin
+        if(rd_mux_addr == 11'h204) begin
             readback_data_var[0] = hwif_in.AES_KV_RD_KEY_STATUS.READY.next;
             readback_data_var[1] = field_storage.AES_KV_RD_KEY_STATUS.VALID.value;
             readback_data_var[9:2] = hwif_in.AES_KV_RD_KEY_STATUS.ERROR.next;
         end
-        if(rd_mux_addr == 12'h208) begin
+        if(rd_mux_addr == 11'h208) begin
             readback_data_var[0] = field_storage.AES_KV_WR_CTRL.write_en.value;
             readback_data_var[5:1] = field_storage.AES_KV_WR_CTRL.write_entry.value;
             readback_data_var[6] = field_storage.AES_KV_WR_CTRL.hmac_key_dest_valid.value;
@@ -2016,88 +1957,84 @@ module aes_clp_reg (
             readback_data_var[14] = field_storage.AES_KV_WR_CTRL.dma_data_dest_valid.value;
             readback_data_var[31:15] = field_storage.AES_KV_WR_CTRL.rsvd.value;
         end
-        if(rd_mux_addr == 12'h20c) begin
+        if(rd_mux_addr == 11'h20c) begin
             readback_data_var[0] = hwif_in.AES_KV_WR_STATUS.READY.next;
             readback_data_var[1] = field_storage.AES_KV_WR_STATUS.VALID.value;
             readback_data_var[9:2] = hwif_in.AES_KV_WR_STATUS.ERROR.next;
         end
-        if(rd_mux_addr == 12'h400) begin
+        if(rd_mux_addr == 11'h400) begin
             readback_data_var[0] = field_storage.intr_block_rf.global_intr_en_r.error_en.value;
             readback_data_var[1] = field_storage.intr_block_rf.global_intr_en_r.notif_en.value;
         end
-        if(rd_mux_addr == 12'h404) begin
+        if(rd_mux_addr == 11'h404) begin
             readback_data_var[0] = field_storage.intr_block_rf.error_intr_en_r.error0_en.value;
             readback_data_var[1] = field_storage.intr_block_rf.error_intr_en_r.error1_en.value;
             readback_data_var[2] = field_storage.intr_block_rf.error_intr_en_r.error2_en.value;
             readback_data_var[3] = field_storage.intr_block_rf.error_intr_en_r.error3_en.value;
         end
-        if(rd_mux_addr == 12'h408) begin
+        if(rd_mux_addr == 11'h408) begin
             readback_data_var[0] = field_storage.intr_block_rf.notif_intr_en_r.notif_cmd_done_en.value;
         end
-        if(rd_mux_addr == 12'h40c) begin
+        if(rd_mux_addr == 11'h40c) begin
             readback_data_var[0] = field_storage.intr_block_rf.error_global_intr_r.agg_sts.value;
         end
-        if(rd_mux_addr == 12'h410) begin
+        if(rd_mux_addr == 11'h410) begin
             readback_data_var[0] = field_storage.intr_block_rf.notif_global_intr_r.agg_sts.value;
         end
-        if(rd_mux_addr == 12'h414) begin
+        if(rd_mux_addr == 11'h414) begin
             readback_data_var[0] = field_storage.intr_block_rf.error_internal_intr_r.error0_sts.value;
             readback_data_var[1] = field_storage.intr_block_rf.error_internal_intr_r.error1_sts.value;
             readback_data_var[2] = field_storage.intr_block_rf.error_internal_intr_r.error2_sts.value;
             readback_data_var[3] = field_storage.intr_block_rf.error_internal_intr_r.error3_sts.value;
         end
-        if(rd_mux_addr == 12'h418) begin
+        if(rd_mux_addr == 11'h418) begin
             readback_data_var[0] = field_storage.intr_block_rf.notif_internal_intr_r.notif_cmd_done_sts.value;
         end
-        if(rd_mux_addr == 12'h41c) begin
+        if(rd_mux_addr == 11'h41c) begin
             readback_data_var[0] = field_storage.intr_block_rf.error_intr_trig_r.error0_trig.value;
             readback_data_var[1] = field_storage.intr_block_rf.error_intr_trig_r.error1_trig.value;
             readback_data_var[2] = field_storage.intr_block_rf.error_intr_trig_r.error2_trig.value;
             readback_data_var[3] = field_storage.intr_block_rf.error_intr_trig_r.error3_trig.value;
         end
-        if(rd_mux_addr == 12'h420) begin
+        if(rd_mux_addr == 11'h420) begin
             readback_data_var[0] = field_storage.intr_block_rf.notif_intr_trig_r.notif_cmd_done_trig.value;
         end
-        if(rd_mux_addr == 12'h500) begin
+        if(rd_mux_addr == 11'h500) begin
             readback_data_var[31:0] = field_storage.intr_block_rf.error0_intr_count_r.cnt.value;
         end
-        if(rd_mux_addr == 12'h504) begin
+        if(rd_mux_addr == 11'h504) begin
             readback_data_var[31:0] = field_storage.intr_block_rf.error1_intr_count_r.cnt.value;
         end
-        if(rd_mux_addr == 12'h508) begin
+        if(rd_mux_addr == 11'h508) begin
             readback_data_var[31:0] = field_storage.intr_block_rf.error2_intr_count_r.cnt.value;
         end
-        if(rd_mux_addr == 12'h50c) begin
+        if(rd_mux_addr == 11'h50c) begin
             readback_data_var[31:0] = field_storage.intr_block_rf.error3_intr_count_r.cnt.value;
         end
-        if(rd_mux_addr == 12'h580) begin
+        if(rd_mux_addr == 11'h580) begin
             readback_data_var[31:0] = field_storage.intr_block_rf.notif_cmd_done_intr_count_r.cnt.value;
         end
-        if(rd_mux_addr == 12'h600) begin
+        if(rd_mux_addr == 11'h600) begin
             readback_data_var[0] = field_storage.intr_block_rf.error0_intr_count_incr_r.pulse.value;
         end
-        if(rd_mux_addr == 12'h604) begin
+        if(rd_mux_addr == 11'h604) begin
             readback_data_var[0] = field_storage.intr_block_rf.error1_intr_count_incr_r.pulse.value;
         end
-        if(rd_mux_addr == 12'h608) begin
+        if(rd_mux_addr == 11'h608) begin
             readback_data_var[0] = field_storage.intr_block_rf.error2_intr_count_incr_r.pulse.value;
         end
-        if(rd_mux_addr == 12'h60c) begin
+        if(rd_mux_addr == 11'h60c) begin
             readback_data_var[0] = field_storage.intr_block_rf.error3_intr_count_incr_r.pulse.value;
         end
-        if(rd_mux_addr == 12'h610) begin
+        if(rd_mux_addr == 11'h610) begin
             readback_data_var[0] = field_storage.intr_block_rf.notif_cmd_done_intr_count_incr_r.pulse.value;
         end
-        if((rd_mux_addr >= 12'h800) && (rd_mux_addr <= 12'h800 + 12'h8b)) begin
-            readback_data_var = hwif_in.aes_core.rd_data;
-        end
         readback_data = readback_data_var;
-        readback_done = decoded_req & ~decoded_req_is_wr & ~decoded_req_is_external;
+        readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
     end
 
-    assign external_rd_ack = readback_external_rd_ack;
-    assign cpuif_rd_ack = readback_done | readback_external_rd_ack;
+    assign cpuif_rd_ack = readback_done;
     assign cpuif_rd_data = readback_data;
     assign cpuif_rd_err = readback_err;
 
