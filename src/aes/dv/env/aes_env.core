@@ -29,7 +29,7 @@ filesets:
       - seq_lib/aes_base_vseq.sv: {is_include_file: true}
       - seq_lib/aes_common_vseq.sv: {is_include_file: true}
       # - seq_lib/aes_wake_up_vseq.sv: {is_include_file: true}
-      # - seq_lib/aes_stress_vseq.sv: {is_include_file: true}
+      - seq_lib/aes_stress_vseq.sv: {is_include_file: true}
       # - seq_lib/aes_alert_reset_vseq.sv: {is_include_file: true}
       # - seq_lib/aes_nist_vectors_vseq.sv: {is_include_file: true}
       # - seq_lib/aes_nist_vectors_gcm_vseq.sv: {is_include_file: true}
