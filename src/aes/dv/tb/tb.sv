@@ -27,17 +27,23 @@ module tb;
   wire status_idle;
   assign idle = status_idle;
 
-  // AHB host-side interface. The agent drives the manager signals; the (single) subordinate
-  // signals are driven back from the DUT outputs via the assigns below.
+  // AHB host-side interface.
+  //
+  // This gets configured by an initial block to be in Host mode, meaning that an agent will drive
+  // the manager side of the interface (which also includes a decoder and multiplexor).
+  //
+  // The subordinate side of the interface has a single subordinate, which is driven by continuous
+  // assignments below.
   ahb_if ahb_if_h (.clk_i(clk), .rst_ni(rst_n));
 
-  // DUT-driven AHB response signals — fed into subordinate slot 0 of ahb_if_h.
-  wire [31:0] dut_hrdata;
-  wire        dut_hreadyout;
-  wire        dut_hresp;
-  assign ahb_if_h.hrdata[0]    = {{(1024-32){1'b0}}, dut_hrdata};
-  assign ahb_if_h.hreadyout[0] = dut_hreadyout;
-  assign ahb_if_h.hresp[0]     = dut_hresp;
+  initial begin
+    ahb_if_h.if_mode          = Host;
+    ahb_if_h.addr_width       = 32;
+    ahb_if_h.hburst_width     = 0;
+    ahb_if_h.hprot_width      = 0;
+    ahb_if_h.data_width       = 32;
+    ahb_if_h.num_subordinates = 1;
+  end
 
   // dut
   aes_clp_wrapper dut (
@@ -53,9 +59,9 @@ module tb;
     .hready_i                         ( ahb_if_h.hready       ),
     .htrans_i                         ( ahb_if_h.htrans       ),
     .hsize_i                          ( ahb_if_h.hsize        ),
-    .hresp_o                          ( dut_hresp             ),
-    .hreadyout_o                      ( dut_hreadyout         ),
-    .hrdata_o                         ( dut_hrdata            ),
+    .hresp_o                          ( ahb_if_h.hresp[0]     ),
+    .hreadyout_o                      ( ahb_if_h.hreadyout[0] ),
+    .hrdata_o                         ( ahb_if_h.hrdata[0]    ),
 
     // TODO: no OCP-LOCK agent in DV; tie low.
     .ocp_lock_in_progress             ( 1'b0    ),
@@ -100,6 +106,10 @@ module tb;
     uvm_config_db#(virtual clk_rst_if)::set(     null, "*.env", "clk_rst_vif",      clk_rst_if);
     uvm_config_db#(virtual pins_if #(1))::set(   null, "*.env", "idle_vif",         idle_if);
     uvm_config_db#(virtual ahb_if)::set(         null, "*.env", "ahb_vif",          ahb_if_h);
+
+    // In the block-level environment, there is one subordinate on the AHB: the aes_clp_wrapper,
+    // with index 0.
+    uvm_config_db#(int unsigned)::set(null, "*.env", "ahb_subordinate_index", 0);
 
     // White-Box DV Interfaces
     uvm_config_db#(virtual aes_cov_if)::set(   null, "*.env", "aes_cov_if",     dut.aes_inst.u_aes_cov_if);

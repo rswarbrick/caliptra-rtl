@@ -28,7 +28,10 @@ class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_dv_reg));
   virtual fi_ghash_if aes_ghash_fi_vif;
   virtual fi_core_if aes_core_fi_vif;
 
-  ahb_agent_cfg m_ahb_agent_cfg;
+  // The index of the aes_clp_wrapper instance in the AHB environment. This must be provided by the
+  // testbench through uvm_config_db (and is given a known-bad default value here to check it is
+  // provided).
+  int unsigned       m_subordinate_idx = ~0;
 
   // test environment constraints //
   typedef enum { VerySlow, Slow, Fast, VeryFast } tl_ul_access_e;
@@ -334,16 +337,7 @@ class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_dv_reg));
                    `UVM_REG_DATA_WIDTH,
                    `UVM_REG_BYTENABLE_WIDTH);
 
-    // Create the AHB agent cfg object.
-    m_ahb_agent_cfg = ahb_agent_cfg::type_id::create({"m_ahb_agent_cfg_", ral_type_name});
-    // m_ahb_agent_cfg.is_active = is_active;
-    // m_ahb_agent_cfg.if_mode = (is_active ? dv_utils_pkg::Host : dv_utils_pkg::Monitor);
-
     get_config_db_handles();
-
-    // Hand the AHB interface handle to the agent cfg so the agent can drive it.
-    // TODO(caliptra-port): adjust to whatever field name ahb_agent_cfg exposes for its vif.
-    m_ahb_agent_cfg.vif = ahb_vif;
   endfunction
 
 endclass

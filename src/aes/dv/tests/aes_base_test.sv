@@ -12,6 +12,15 @@ class aes_base_test extends dv_base_test #(.ENV_T(aes_env),
      configure_env();
    endfunction // build_phase
 
+   virtual task run_phase(uvm_phase phase);
+     fork
+       super.run_phase(phase);
+       if (cfg.is_active) begin
+         env.run_layered_register_vseq();
+       end
+     join
+   endtask
+
   //this will serve as the default setting.
   // overrides should happen in the specific testcase.
 
