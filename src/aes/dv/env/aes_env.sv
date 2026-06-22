@@ -12,36 +12,53 @@ class aes_env extends dv_base_env #(
 
   `uvm_component_new
 
-  local ahb_mgr_agent   m_ahb_mgr_agent;
-  local ahb_reg_adapter m_ahb_reg_adapter;
+  local ahb_mgr_agent m_ahb_mgr_agent;
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
 
-    // Publish the AHB agent's cfg object into the config DB so the agent picks it up in its own
-    // build_phase, then create the agent and a stateless register adapter.
-    uvm_config_db#(ahb_agent_cfg)::set(this, "m_ahb_mgr_agent*", "cfg", cfg.m_ahb_agent_cfg);
-    cfg.m_ahb_agent_cfg.en_cov = cfg.en_cov;
+    if (!uvm_config_db#(virtual ahb_if)::get(this, "", "ahb_vif", cfg.ahb_vif)) begin
+      `uvm_fatal(get_full_name(), "No ahb_vif supplied to environment.")
+    end
 
-    m_ahb_mgr_agent   = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
-    m_ahb_reg_adapter = ahb_reg_adapter::type_id::create("m_ahb_reg_adapter");
+    // Pass the AHB interface to the AHB agent
+    uvm_config_db#(virtual ahb_if)::set(this, "m_ahb_mgr_agent*", "vif", cfg.ahb_vif);
+
+    m_ahb_mgr_agent = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
   endfunction
 
   function void connect_phase(uvm_phase phase);
+    uvm_reg_map maps[$];
+
     super.connect_phase(phase);
+
+    // Bind the RAL default_map to the AHB sequencer + adapter so register accesses are issued via
+    // the AHB agent.
+    if (m_ahb_mgr_agent.get_is_active() == UVM_ACTIVE) begin
+      cfg.ral.default_map.set_sequencer(m_ahb_mgr_agent.get_register_layering_sequencer(),
+                                        m_ahb_mgr_agent.get_reg_adapter());
+    end
+
+    // Tell the AHB agent which registers are mapped to which subordinate. For the block-level
+    // environment (for now, at least), there is a single subordinate, at index zero.
+    cfg.ral.get_maps(maps);
+    foreach (maps[i]) begin
+      m_ahb_mgr_agent.register_subordinate_for_map(maps[i], 0);
+    end
+
     // TODO(caliptra-port): when an AHB monitor / analysis port is added to ahb_mgr_agent, hook it
     // up to the scoreboard here. The OpenTitan TL flow split traffic into a/d channel FIFOs;
     // AES only needs one AHB bus.
   endfunction
 
-  function void end_of_elaboration_phase(uvm_phase phase);
-    super.end_of_elaboration_phase(phase);
-
-    // Bind the RAL default_map to the AHB sequencer + adapter so register accesses are issued via
-    // the AHB agent.
-    if (cfg.m_ahb_agent_cfg.is_active) begin
-      cfg.ral.default_map.set_sequencer(m_ahb_mgr_agent.sequencer, m_ahb_reg_adapter);
+  // Run the vseq inside m_ahb_mgr_agent that will support front-door register accesses
+  //
+  // This should be run by the test in the run phase; the task will never return.
+  task run_layered_register_vseq();
+    if (m_ahb_mgr_agent.get_is_active() != UVM_ACTIVE) begin
+      `uvm_error(get_full_name(), "Cannot run layering vseq: the agent is not active.")
+      wait(0);
     end
-  endfunction
-
+    m_ahb_mgr_agent.run_layered_register_vseq();
+  endtask
 endclass
