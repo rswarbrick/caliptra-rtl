@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
-class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_clp_reg));
+class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_dv_reg));
 
   `uvm_object_utils_begin(aes_env_cfg)
   `uvm_object_utils_end
@@ -326,7 +326,7 @@ class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_clp_reg));
   virtual function void initialize();
     // dv_base_env_cfg requires ral_type_name to be set explicitly before initialize_ral (see the
     // comment on dv_base_env_cfg::ral_type_name). Provide the PeakRDL-uvm class name.
-    ral_type_name = "aes_clp_reg";
+    ral_type_name = "aes_dv_reg";
 
     // Initialize the register models themselves. This uses initialize_ral, which is implemented in
     // dv_base_env_cfg.

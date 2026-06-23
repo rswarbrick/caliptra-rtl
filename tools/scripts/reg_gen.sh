@@ -66,9 +66,19 @@ python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/axi/data/axi_dma_reg.rdl \
     --rtl-output $CALIPTRA_ROOT/src/axi/rtl/generated \
     --dv-output  $CALIPTRA_ROOT/src/axi/dv/reg_model
 
+# AES wrapper regblock RTL only — its UVM RAL is emitted by the composite
+# aes_dv_reg.rdl below, which exposes both wrapper CSRs and the OT AES core
+# under a single addrmap at the offsets the VH adapter routes them to.
 python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/aes/data/aes_clp_reg.rdl \
     --rtl-output $CALIPTRA_ROOT/src/aes/rtl/generated \
+    --rtl-only
+
+# Block-level DV composite RAL (UVM + coverage scaffolding) — UVM-only; the
+# regblock RTL for each sub-block is generated separately above and from the
+# OT AES core's own source tree.
+python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/aes/data/aes_dv_reg.rdl \
     --dv-output  $CALIPTRA_ROOT/src/aes/dv/reg_model \
+    --dv-only \
     --cov
 
 python3 tools/scripts/reg_gen.py $CALIPTRA_ROOT/src/libs/data/interrupt_regs.rdl \

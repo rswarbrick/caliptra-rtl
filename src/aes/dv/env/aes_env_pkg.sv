@@ -11,7 +11,7 @@ package aes_env_pkg;
   import caliptra_dv_utils_pkg::*;
   import aes_pkg::*;
   import aes_reg_pkg::*;
-  import aes_clp_reg_uvm::*;
+  import aes_dv_reg_uvm::*;
   import ahb_agent_pkg::*;
   import nist_vectors_pkg::*;
   import nist_vectors_gcm_pkg::*;

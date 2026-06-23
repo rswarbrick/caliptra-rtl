@@ -23,12 +23,12 @@ targets:
       - $COMPILE_ROOT/rtl/aes_sbox_canright_pkg.sv
       - $COMPILE_ROOT/rtl/generated/aes_clp_reg_pkg.sv
 ---
-# Auto-generated UVM register-model file for the AES block (aes_clp_reg),
-# plus the per-block covergroup and sample scaffolding it includes.
-# Testbench-only.
+# Auto-generated UVM register-model file for the AES block — composite RAL
+# (OT core + Caliptra wrapper) generated from aes_dv_reg.rdl, plus the
+# per-block covergroup and sample scaffolding it includes. Testbench-only.
 provides: [aes_uvm_pkg]
 schema_version: 2.4.0
-# aes_clp_reg_uvm.sv now extends dv_base_reg{,_block,_field} and imports
+# aes_dv_reg_uvm.sv extends dv_base_reg{,_block,_field} and imports
 # dv_base_reg_pkg::*; anchor the FuseSoC core ahead of this fileset.
 # (Compile-to-core passes through colon-bearing names verbatim — see the
 # local compile-to-core-passthrough-vlnv patch.)
@@ -38,7 +38,7 @@ targets:
   tb:
     directories: [$COMPILE_ROOT/dv/reg_model]
     files:
-      - $COMPILE_ROOT/dv/reg_model/aes_clp_reg_uvm.sv
+      - $COMPILE_ROOT/dv/reg_model/aes_dv_reg_uvm.sv
 ---
 # Functional-coverage collateral bound onto the AES block. Testbench-only.
 provides: [aes_coverage]
