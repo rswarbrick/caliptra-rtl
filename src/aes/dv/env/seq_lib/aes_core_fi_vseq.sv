@@ -15,6 +15,11 @@ class aes_core_fi_vseq extends aes_base_vseq;
   rand int                 target;
   rand aes_pkg::aes_ctrl_e await_state;
 
+  // Wait until STATUS.IDLE has the desired value. Return early on reset.
+  task spinwait_status_idle_value(bit expected);
+    masked_spinwait_bit(ral.aes_core.STATUS, expected, ral.aes_core.STATUS.IDLE.get_lsb_pos());
+  endtask
+
   task body();
 
     int if_size;
@@ -96,8 +101,8 @@ class aes_core_fi_vseq extends aes_base_vseq;
           // The fault potentially prevents the module from making any progress. DV will try to
           // clear and restart it but might never succeed resulting in the module being idle and
           // again busy.
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b0);
+          spinwait_status_idle_value(1);
+          spinwait_status_idle_value(0);
           cfg.aes_core_fi_vif.force_signal(target, RELEASE, force_value);
         end else begin
           // The fault might trigger a reset or not.

@@ -30,6 +30,19 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
   bit                rst_set;
   bit                do_b2b = 0;
 
+  // Read the CTRL_GCM_SHADOWED register to rdata.
+  //
+  // Returns early on reset.
+  task read_ctrl_gcm_shadowed(output ctrl_gcm_reg_t rdata);
+    uvm_status_e txn_status;
+    ral.aes_core.CTRL_GCM_SHADOWED.read(txn_status, rdata);
+
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) begin
+      `uvm_error(get_full_name(), "Failed to read CTRL_GCM_SHADOWED.")
+    end
+  endtask
+
   task body();
     `uvm_info(`gfn, $sformatf("\n\n\t ----| STARTING AES-GCM SAVE & RESTORE SEQUENCE |----\n %s",
                               cfg.convert2string()), UVM_MEDIUM)
@@ -78,14 +91,18 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
       msg.add_start_msg_item(cfg_item);
 
       // Wait until the DUT is idle. This is required to start the configuration.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       // Configure the DUT. Depending on the configuration, this might trigger a PRNG reseed
       // operation.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
       setup_dut(cfg_item);
+      if (cfg.under_reset) return;
 
       // Wait until the DUT is idle. This is required to provide key and IV.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       // Provide key, IV and data.
       cov_if.cg_ctrl_gcm_reg_sample(GCM_INIT);
       write_data_key_iv(cfg_item, cfg_item, 1, cfg_item.manual_op, 0, 0, rst_set);
@@ -102,7 +119,10 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
         end
         cov_if.cg_ctrl_gcm_reg_sample(gcm_phase_wr);
         set_gcm_phase(gcm_phase_e'(gcm_phase_wr), 16, 1, 0);
-        ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
+
+        read_ctrl_gcm_shadowed(ctrl_gcm);
+        if (cfg.under_reset) return;
+
         if (ctrl_gcm.phase != GCM_INIT) begin
           `uvm_fatal(`gfn, $sformatf("Expected GCM phase GCM_INIT, got %s", ctrl_gcm.phase.name()))
         end
@@ -121,7 +141,8 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
       while (aes_item_queue.size() > 0 ) begin
         int valid_bytes;
         // Wait until the DUT is idle.
-        ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+        spinwait_status_idle();
+        if (cfg.under_reset) return;
 
         data_item = aes_item_queue.pop_back();
         `uvm_info(`gfn, $sformatf("\n\t ----AES ITEM %s",
@@ -134,10 +155,14 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
           set_gcm_phase(GCM_SAVE, 16, 0, 0);
           if (cfg_item.manual_op) trigger();
           // Save the current AES-GCM context.
-          ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+          spinwait_output_valid();
+          if (cfg.under_reset) return;
+
           read_data(saved_gcm_state, do_b2b);
+
           // Save the current IV.
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
           read_iv(saved_iv, do_b2b);
           `downcast(cfg_item_restored_iv, cfg_item.clone());
           cfg_item_restored_iv.iv = saved_iv;
@@ -161,20 +186,31 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
             ctrl_gcm.phase = gcm_phase_e'(gcm_phase_wr);
             ctrl_gcm.num_valid_bytes = 16;
             `uvm_info(`gfn,
-                $sformatf("Writing invalid GCM phase 0x%0x, except the DUT to move to GCM_INIT",
+                $sformatf("Writing invalid GCM phase 0x%0x. Expect the DUT to move to GCM_INIT",
                     gcm_phase_wr), UVM_MEDIUM)
             cov_if.cg_ctrl_gcm_reg_sample(gcm_phase_wr);
-            ral.aes_core.CTRL_GCM_SHADOWED.write(status, ctrl_gcm);
-            ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
+
+            double_write(ral.aes_core.CTRL_GCM_SHADOWED, ctrl_gcm);
+            if (cfg.under_reset) return;
+
+            read_ctrl_gcm_shadowed(ctrl_gcm);
+            if (cfg.under_reset) return;
+
             if (ctrl_gcm.phase != GCM_INIT) begin
               `uvm_fatal(`gfn,
                   $sformatf("Expected GCM phase GCM_INIT, got %s", ctrl_gcm.phase.name()))
             end
           end
           // Clear the AES IV, data in, and data out registers.
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
+
           clear_regs(2'b11);
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          if (cfg.under_reset) return;
+
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
+
           `uvm_info(`gfn, $sformatf("Restoring AES-GCM state before processing item %d",
                                     item_cnt), UVM_MEDIUM)
           // Reconfigure the initial IV and the key.
@@ -199,14 +235,19 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
             cov_if.cg_ctrl_gcm_reg_sample(GCM_RESTORE);
             set_gcm_phase(GCM_RESTORE, 16, 1, 0);
           end
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           add_data(saved_gcm_state, do_b2b);
           // Restore the saved IV.
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
+
           write_iv(saved_iv, do_b2b);
           if (cfg_item.manual_op) trigger();
           `uvm_info(`gfn, $sformatf("Proceeding with item %d", item_cnt), UVM_MEDIUM)
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
           // Enforce setting the GCM phase for the next item.
           new_aad = 1;
           new_data = 1;
@@ -223,17 +264,24 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
             if ((item_cnt == 1) && $urandom_range(0, 3) == 0)  begin
               // Randomly attemp to enter GCM_SAVE before having processed at least one block. The DUT
               // must remain in the current phase.
-              ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm_prev);
+              read_ctrl_gcm_shadowed(ctrl_gcm_prev);
+              if (cfg.under_reset) return;
+
               cov_if.cg_ctrl_gcm_reg_sample(GCM_SAVE);
               set_gcm_phase(GCM_SAVE, 16, 1, 0);
-              ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
+
+              read_ctrl_gcm_shadowed(ctrl_gcm);
+              if (cfg.under_reset) return;
+
               if (ctrl_gcm.phase == GCM_SAVE) begin
                 `uvm_fatal(`gfn, $sformatf("Expected GCM phase %s, got %s",
                     ctrl_gcm_prev.phase.name(), ctrl_gcm.phase.name()))
               end
             end
           end
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           add_data(data_item.data_in, do_b2b);
           if (cfg_item.manual_op) trigger();
           // Add AAD to message.
@@ -249,30 +297,45 @@ class aes_gcm_save_restore_vseq extends aes_base_vseq;
             if ((item_cnt == 1) && $urandom_range(0, 3) == 0)  begin
               // Randomly attemp to enter GCM_SAVE before having processed at least one block. The DUT
               // must remain in the current phase.
-              ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm_prev);
+              read_ctrl_gcm_shadowed(ctrl_gcm_prev);
+              if (cfg.under_reset) return;
+
               cov_if.cg_ctrl_gcm_reg_sample(GCM_SAVE);
               set_gcm_phase(GCM_SAVE, 16, 1, 0);
-              ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
+
+              read_ctrl_gcm_shadowed(ctrl_gcm);
+              if (cfg.under_reset) return;
+
               if (ctrl_gcm.phase == GCM_SAVE) begin
                 `uvm_fatal(`gfn, $sformatf("Expected GCM phase %s, got %s",
                     ctrl_gcm_prev.phase.name(), ctrl_gcm.phase.name()))
               end
             end
           end
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           add_data(data_item.data_in, do_b2b);
           if (cfg_item.manual_op) trigger();
-          ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+
+          spinwait_output_valid();
+          if (cfg.under_reset) return;
+
           read_data(data_item.data_out, do_b2b);
           // Add input and output data block to message.
           msg.add_data_item(data_item);
         end else if (data_item.item_type == AES_GCM_TAG) begin
           cov_if.cg_ctrl_gcm_reg_sample(GCM_TAG);
           set_gcm_phase(GCM_TAG, 16, 0, 0);
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           add_data(data_item.data_in, do_b2b);
           if (cfg_item.manual_op) trigger();
-          ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+
+          spinwait_output_valid();
+          if (cfg.under_reset) return;
+
           read_data(data_item.data_out, do_b2b);
           // Add tag to message.
           msg.add_tag_item(data_item);

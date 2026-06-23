@@ -37,7 +37,9 @@ class aes_nist_vectors_vseq extends aes_base_vseq;
 
     foreach (nist_vectors[i]) begin
       // wait for dut idle
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       `uvm_info(`gfn, $sformatf("%s", vector2string(nist_vectors[i]) ), UVM_LOW)
       `uvm_info(`gfn, $sformatf(" \n\t ---|setting operation to encrypt"), UVM_MEDIUM)
 
@@ -45,15 +47,16 @@ class aes_nist_vectors_vseq extends aes_base_vseq;
       ral.aes_core.CTRL_SHADOWED.OPERATION.set(AES_ENC);
       ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(nist_vectors[i].key_len);
       ral.aes_core.CTRL_SHADOWED.MODE.set(nist_vectors[i].mode);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(AES_ENC));
-      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(nist_vectors[i].key_len));
-      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(nist_vectors[i].mode));
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
+
       // transpose key To match NIST format ( little endian)
       init_key = '{ {<<8{nist_vectors[i].key}} ,  256'h0 };
       write_key(init_key, do_b2b);
       if (nist_vectors[i].mode != AES_ECB) begin
-        ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+        spinwait_status_idle();
+        if (cfg.under_reset) return;
+
         iv = {<<8{nist_vectors[i].iv}};
         write_iv(iv, do_b2b);
       end
@@ -61,7 +64,9 @@ class aes_nist_vectors_vseq extends aes_base_vseq;
       `uvm_info(`gfn, $sformatf(" \n\t ---| ADDING PLAIN TEXT"), UVM_MEDIUM)
 
       foreach (nist_vectors[i].plain_text[n]) begin
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
+
         // transpose input text
         plain_text[n] = {<<8{nist_vectors[i].plain_text[n]}};
         add_data(plain_text[n], do_b2b);
@@ -70,7 +75,9 @@ class aes_nist_vectors_vseq extends aes_base_vseq;
         `uvm_info(`gfn, $sformatf("\n\t ---| Polling for data register %s",
                                   ral.aes_core.STATUS.convert2string()), UVM_DEBUG)
 
-        ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+        spinwait_output_valid();
+        if (cfg.under_reset) return;
+
         read_data(cipher_text[n], do_b2b);
       end
 
@@ -86,26 +93,31 @@ class aes_nist_vectors_vseq extends aes_base_vseq;
       ral.aes_core.CTRL_SHADOWED.OPERATION.set(AES_DEC);
       ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(nist_vectors[i].key_len);
       ral.aes_core.CTRL_SHADOWED.MODE.set(nist_vectors[i].mode);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(AES_DEC));
-      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(nist_vectors[i].key_len));
-      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(nist_vectors[i].mode));
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
 
       // transpose key To match NIST format ( little endian)
       init_key = '{ {<<8{nist_vectors[i].key}} ,  256'h0 };
       write_key(init_key, do_b2b);
       if (nist_vectors[i].mode != AES_ECB) begin
-        ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+        spinwait_status_idle();
+        if (cfg.under_reset) return;
+
         iv = {<<8{nist_vectors[i].iv}};
         write_iv(iv, do_b2b);
       end
 
       foreach (nist_vectors[i].plain_text[n]) begin
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
+
         // transpose input text
         cipher_text[n] =  {<<8{cipher_text[n]}};
         add_data(cipher_text[n], do_b2b);
-        ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+
+        spinwait_output_valid();
+        if (cfg.under_reset) return;
+
         read_data(decrypted_text[n], do_b2b);
       end
       foreach (nist_vectors[i].cipher_text[n]) begin

@@ -9,10 +9,6 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
 
   `uvm_object_utils(aes_base_vseq)
 
-  // Scratch return code for native UVM RAL accessors (.write/.read/.update). The vseq is
-  // single-threaded w.r.t. RAL accesses so one shared word is safe.
-  uvm_status_e       status;
-
   aes_reg2hw_t       aes_reg;
   aes_seq_item       aes_item;
   aes_seq_item       aes_item_queue[$];
@@ -71,56 +67,233 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     wait(cfg.clk_rst_vif.rst_n);
   endtask // aes_reset
 
+  // Read the STATUS register and write its 6-bit value to status_value.
+  //
+  // Exits early on reset.
+  task read_status(output logic [5:0] status_value);
+    uvm_status_e txn_status;
 
-  // setup basic aes features
+    ral.aes_core.STATUS.read(txn_status, status_value);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) begin
+      `uvm_error(get_full_name(), "Failed to read STATUS register.")
+    end
+  endtask
+
+  // Repeatedly read the given register until its value matches desired_value when both are masked.
+  //
+  // Exits early on reset.
+  task masked_spinwait_register(uvm_reg        register,
+                                uvm_reg_data_t desired_value,
+                                uvm_reg_data_t mask);
+    forever begin
+      uvm_status_e   txn_status;
+      uvm_reg_data_t reg_value;
+
+      register.read(txn_status, reg_value);
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(), $sformatf("Failed to read %0s register.", register.get_name()))
+      end
+
+      if (~|((reg_value ^ desired_value) & mask)) break;
+    end
+  endtask
+
+  // Repeatedly read the given register until the bit at bit_idx has the desired value.
+  task masked_spinwait_bit(uvm_reg register, uvm_reg_data_t desired_value, int unsigned bit_idx);
+    uvm_reg_data_t mask = (uvm_reg_data_t'(1) << bit_idx) - 1;
+    masked_spinwait_register(register, desired_value ? mask : '0, mask);
+  endtask
+
+  // Repeatedly read the STATUS register until its IDLE field is true
+  //
+  // Exits early on reset.
+  task spinwait_status_idle();
+    masked_spinwait_bit(ral.aes_core.STATUS, 1'b1, ral.aes_core.STATUS.IDLE.get_lsb_pos());
+  endtask
+
+  // Spinwait on the STATUS register until its INPUT_READY field is asserted.
+  //
+  // Returns early on reset.
+  task spinwait_input_ready();
+    masked_spinwait_bit(ral.aes_core.STATUS, 1'b1, ral.aes_core.STATUS.INPUT_READY.get_lsb_pos());
+  endtask
+
+  // Spinwait on the STATUS register until its OUTPUT_VALID field is asserted.
+  //
+  // Returns early on reset.
+  task spinwait_output_valid();
+    masked_spinwait_bit(ral.aes_core.STATUS, 1'b1, ral.aes_core.STATUS.OUTPUT_VALID.get_lsb_pos());
+  endtask
+
+  // Corrupt the mirrored value of a register in order that needs_update() will return 1
+  //
+  // This works by calling predict() then set(), but this only works when the register has a field
+  // where get_access() returns RW or WO (where we can guess the value to pass to set to restore the
+  // desired value).
+  function void trigger_needs_update(uvm_reg register);
+    uvm_reg_field  fields[$];
+
+    // Nothing to do if the register already thinks it needs an update
+    if (register.needs_update()) return;
+
+    register.get_fields(fields);
+
+    foreach (fields[i]) begin
+      string field_access = fields[i].get_access();
+      if (field_access inside {"RW", "WO"}) begin
+        uvm_reg_data_t desired = fields[i].get();
+        if (!fields[i].predict(.value(~desired))) begin
+          `uvm_error(get_full_name(),
+                     $sformatf("Failed to predict value for %0s field %0s.",
+                               register.get_name(), fields[i].get_name()))
+        end
+        fields[i].set(desired);
+        return;
+      end
+    end
+
+    // If we get here, we didn't find any fields where we could force needs_update to be true.
+    `uvm_error(get_full_name(),
+               $sformatf("Can't trigger needs_update for register %0s.", register.get_name()))
+  endfunction
+
+  // Update a register to match its desired value (if the predicted value doesn't match).
+  //
+  // This is designed for a shadowed register so performs a double write when doing so. With this
+  // task, you can write to a shadowed register by setting the value and then calling this task.
+  task double_update_to_desired(uvm_reg dest_reg);
+    if (!dest_reg.needs_update()) return;
+
+    for (int unsigned i = 0; i < 2; i++) begin
+      uvm_status_e txn_status;
+      trigger_needs_update(dest_reg);
+
+      dest_reg.update(txn_status);
+
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(),
+                   $sformatf("Failed to update %0s register (iteration %0d).",
+                             dest_reg.get_name(), i))
+      end
+    end
+  endtask
+
+  // Double-write the given register
+  //
+  // This is needed for a register that is shadowed. Exits early on reset.
+  task double_write(uvm_reg dest_reg, bit [31:0] wdata);
+    dest_reg.set(wdata);
+    double_update_to_desired(dest_reg);
+  endtask
+
+  // Set up basic aes features.
+  //
+  // Return early on reset.
   virtual task aes_init();
+    uvm_status_e txn_status;
     bit [31:0] aes_ctrl = '0;
     bit [31:0] aes_ctrl_aux = '0;
     bit [31:0] aes_trigger = '0;
     // Lock and check locking of auxiliary control register (1) or not (0).
     bit lock_ctrl_aux = $urandom_range(0, 1);
+
     `uvm_info(`gfn, $sformatf("\n\t ----| CHECKING FOR IDLE"), UVM_HIGH)
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+    spinwait_status_idle();
+    if (cfg.under_reset) return;
+
     // initialize control register
     aes_ctrl[1:0]  = aes_pkg::AES_ENC;   // 2'b01
     aes_ctrl[7:2]  = aes_pkg::AES_ECB;   // 6'b00_0001
     aes_ctrl[10:8] = aes_pkg::AES_128;   // 3'b001
-    ral.aes_core.CTRL_SHADOWED.write(status, aes_ctrl);
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
-    ral.aes_core.CTRL_SHADOWED.read(status, aes_ctrl);
+
+    double_write(ral.aes_core.CTRL_SHADOWED, aes_ctrl);
+    if (cfg.under_reset) return;
+
+    spinwait_status_idle();
+    if (cfg.under_reset) return;
+
+    ral.aes_core.CTRL_SHADOWED.read(txn_status, aes_ctrl);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_SHADOWED.")
+
     // Write auxiliary control register and make sure the update went through, i.e., the register
     // isn't locked already.
-    ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, cfg.do_reseed);
-    ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
-    `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
+    ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.set(cfg.do_reseed);
+    double_update_to_desired(ral.aes_core.CTRL_AUX_SHADOWED);
+    if (cfg.under_reset) return;
+
+    ral.aes_core.CTRL_AUX_SHADOWED.read(txn_status, aes_ctrl_aux);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_AUX_SHADOWED.")
+
+    if (aes_ctrl_aux[0] != cfg.do_reseed) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("Writing %0d to KEY_TOUCH_FORCES_RESEED has not set the value.",
+                           cfg.do_reseed))
+    end
+
     // Lock auxiliary control register and try overwriting it afterwards.
     if (lock_ctrl_aux) begin
       `uvm_info(`gfn, "Locking auxiliary control register", UVM_MEDIUM)
       set_regwen(0);
+      if (cfg.under_reset) return;
+
       `uvm_info(`gfn, "Try overwriting locked auxiliary control register", UVM_MEDIUM)
-      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, !cfg.do_reseed);
+
+      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.set(!cfg.do_reseed);
+      double_update_to_desired(ral.aes_core.CTRL_AUX_SHADOWED);
+      if (cfg.under_reset) return;
+
       // Read the current value back to ensure the contents of the register didn't change.
-      ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
-      `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
+      ral.aes_core.CTRL_AUX_SHADOWED.read(txn_status, aes_ctrl_aux);
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_AUX_SHADOWED.")
+
+      if (aes_ctrl_aux[0] != cfg.do_reseed) begin
+        `uvm_error(get_full_name(),
+                   $sformatf({"Managed to change KEY_TOUCH_FORCES_RESEED to %0d ",
+                              "despite having locked the register."},
+                             aes_ctrl_aux[0]))
+      end
+
       // Try unlocking the auxiliary control register and overwriting it afterwards. This is not
       // possible either as the lock persists until the next reset.
       set_regwen(1);
-      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.write(status, !cfg.do_reseed);
-      ral.aes_core.CTRL_AUX_SHADOWED.read(status, aes_ctrl_aux);
-      `DV_CHECK_FATAL(aes_ctrl_aux[0] == cfg.do_reseed);
+      if (cfg.under_reset) return;
+
+      ral.aes_core.CTRL_AUX_SHADOWED.KEY_TOUCH_FORCES_RESEED.set(!cfg.do_reseed);
+      double_update_to_desired(ral.aes_core.CTRL_AUX_SHADOWED);
+      if (cfg.under_reset) return;
+
+      // Read the current value back to ensure the contents of the register didn't change.
+      ral.aes_core.CTRL_AUX_SHADOWED.read(txn_status, aes_ctrl_aux);
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_AUX_SHADOWED.")
+
+      if (aes_ctrl_aux[0] != cfg.do_reseed) begin
+        `uvm_error(get_full_name(),
+                   $sformatf("Managed to unlock KEY_TOUCH_FORCES_RESEED and change it to %0d.",
+                             aes_ctrl_aux[0]))
+      end
     end else begin
       // Don't lock it. This is the default value after reset. The write is mostly for coverage.
       set_regwen(1);
     end
   endtask // aes_init
 
-
+  // Write 1 to the TRIGGER register
   virtual task trigger();
-      ral.aes_core.TRIGGER.write(status, 32'h00000001);
+    uvm_status_e txn_status;
+    ral.aes_core.TRIGGER.write(txn_status, 32'h00000001);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write TRIGGER.")
   endtask // trigger
 
-
   virtual task clear_regs(clear_t clr_vector);
+    uvm_status_e txn_status;
     string txt="";
     bit [TL_DW:0] reg_val = '0;
     txt = {txt, $sformatf("\n data_out: \t %0b", clr_vector.dataout)};
@@ -131,86 +304,62 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     ral.aes_core.TRIGGER.set(0);
     ral.aes_core.TRIGGER.KEY_IV_DATA_IN_CLEAR.set(clr_vector.key_iv_data_in);
     ral.aes_core.TRIGGER.DATA_OUT_CLEAR.set(clr_vector.dataout);
-    ral.aes_core.TRIGGER.update(status);
+    ral.aes_core.TRIGGER.update(txn_status);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to update TRIGGER.")
   endtask // clear_registers
 
 
   virtual task prng_reseed();
-    bit [TL_DW:0] reg_val = '0;
-    reg_val[3] = 1'b1;
-    ral.aes_core.TRIGGER.write(status, reg_val);
+    uvm_status_e txn_status;
+
+    ral.aes_core.TRIGGER.write(txn_status, 1 << ral.aes_core.TRIGGER.PRNG_RESEED.get_lsb_pos());
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write TRIGGER.")
   endtask // prng_reseed
 
 
   virtual task set_regwen(bit val);
-    ral.aes_core.CTRL_AUX_REGWEN.set(val);
-    ral.aes_core.CTRL_AUX_REGWEN.write(status, val);
+    uvm_status_e txn_status;
+    ral.aes_core.CTRL_AUX_REGWEN.write(txn_status, val);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write REGWEN.")
   endtask // set_regwen
 
 
   virtual task set_operation(bit [1:0] operation);
-    if (ral.aes_core.CTRL_SHADOWED.OPERATION.get_mirrored_value() != operation) begin
-      ral.aes_core.CTRL_SHADOWED.OPERATION.set(operation);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(operation));
-    end
+    ral.aes_core.CTRL_SHADOWED.OPERATION.set(operation);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask // set_operation
 
 
   virtual task set_mode(bit [5:0] mode);
-    if (ral.aes_core.CTRL_SHADOWED.MODE.get_mirrored_value() != mode) begin
-      ral.aes_core.CTRL_SHADOWED.MODE.set(mode);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(mode));
-    end
+    ral.aes_core.CTRL_SHADOWED.MODE.set(mode);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask
 
 
   virtual task set_key_len(bit [2:0] key_len);
-    if (ral.aes_core.CTRL_SHADOWED.KEY_LEN.get_mirrored_value() != key_len) begin
-      ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(key_len);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(key_len));
-    end
+    ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(key_len);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask // set_key_len
 
 
   virtual task set_sideload(bit sideload);
-    if (ral.aes_core.CTRL_SHADOWED.SIDELOAD.get_mirrored_value() != sideload) begin
-      ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(sideload);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.SIDELOAD.predict(sideload));
-    end
+    ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(sideload);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask
 
 
   virtual task set_prng_reseed_rate(prs_rate_e reseed_rate);
-    if (ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.get_mirrored_value() != reseed_rate) begin
-      ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(reseed_rate);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.predict(reseed_rate));
-    end
+    ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(reseed_rate);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask
 
 
   virtual task set_manual_operation(bit manual_operation);
-    if (ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.get_mirrored_value() != manual_operation) begin
-      ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(manual_operation);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      if (cfg.under_reset) return;
-
-      void'(ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.predict(manual_operation));
-    end
+    ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(manual_operation);
+    double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
   endtask
 
 
@@ -221,21 +370,52 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
   //
   // Exits early on reset.
   virtual task write_key(bit [7:0][31:0] key [2], bit do_b2b);
+    uvm_status_e txn_status;
+
     `uvm_info(`gfn, $sformatf("\n\t --- back to back transactions : %b", do_b2b), UVM_MEDIUM)
 
     foreach (key[0][i]) begin
-      ral.aes_core.KEY_SHARE0[i].write(status, key[0][i]);
+      ral.aes_core.KEY_SHARE0[i].write(txn_status, key[0][i]);
       if (cfg.under_reset) return;
     end
     foreach (key[1][i]) begin
-      ral.aes_core.KEY_SHARE1[i].write(status, key[1][i]);
+      ral.aes_core.KEY_SHARE1[i].write(txn_status, key[1][i]);
       if (cfg.under_reset) return;
+    end
+  endtask // write_key
+
+  // Read the two shares of the key from registers
+  //
+  // Exits early on reset.
+  virtual task read_key(output bit [7:0][31:0] key [2]);
+    for (int unsigned share_idx = 0; share_idx < 2; share_idx++) begin
+      for (int unsigned word_idx = 0; word_idx < 8; word_idx++) begin
+        uvm_status_e txn_status;
+        uvm_reg src_reg = share_idx ?
+                           ral.aes_core.KEY_SHARE1[word_idx] :
+                           ral.aes_core.KEY_SHARE0[word_idx];
+
+        src_reg.read(txn_status, key[share_idx][word_idx]);
+        if (cfg.under_reset) return;
+        if (txn_status != UVM_IS_OK) begin
+          `uvm_error(get_full_name(),
+                     $sformatf("Failed to read %0s register.", src_reg.get_name()))
+        end
+      end
     end
   endtask // write_key
 
 
   virtual task write_iv(bit  [3:0][31:0] iv, bit do_b2b);
-    foreach (iv[i]) ral.aes_core.IV[i].write(status, iv[i]);
+    for (int unsigned i = 0; i < 4; i++) begin
+      uvm_status_e txn_status;
+      ral.aes_core.IV[i].write(txn_status, iv[i]);
+
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(), $sformatf("Failed to write IV[%0d] register.", i))
+      end
+    end
   endtask // write_iv
 
 
@@ -245,19 +425,38 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     read_order.shuffle();
 
     foreach (read_order[i]) begin
-      int idx = read_order[i];
-      ral.aes_core.IV[idx].read(status, iv[idx]);
+      uvm_status_e txn_status;
+      int unsigned idx = read_order[i];
+
+      ral.aes_core.IV[idx].read(txn_status, iv[idx]);
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(), $sformatf("Failed to read IV[%0d] register.", idx))
+      end
+
       `uvm_info(`gfn, $sformatf("\n\t ----| IV_%0d: %h ",idx,  iv[idx]), UVM_HIGH)
     end
   endtask
 
+  // Make predictions of the PHASE and NUM_VALID_BYTES fields of CTRL_GCM_SHADOWED
+  function void predict_gcm_shadowed(bit [5:0] phase,
+                                     bit [4:0] num_valid_bytes);
+    if (!ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase)) begin
+      `uvm_error(get_full_name(), "Failed to predict CTRL_GCM_SHADOWED.PHASE.")
+    end
+    if (!ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_valid_bytes)) begin
+      `uvm_error(get_full_name(), "Failed to predict CTRL_GCM_SHADOWED.NUM_VALID_BYTES.")
+    end
+  endfunction
+
   virtual task set_gcm_phase(gcm_phase_e phase, int num_bytes, bit wait_idle, bit config_err_en);
+    uvm_status_e txn_status;
     ctrl_gcm_reg_t ctrl_gcm;
     gcm_phase_e phase_prev, phase_wr;
     int num_bytes_wr;
 
     if (wait_idle) begin
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
       if (cfg.under_reset) return;
     end
 
@@ -333,24 +532,29 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
         $sformatf("Current GCM phase %s, writing %s, actually requested %s",
         phase_prev.name(), phase_wr.name(), phase.name()), UVM_MEDIUM)
     `uvm_info(`gfn, $sformatf("Writing num_bytes_valid %0d", num_bytes_wr), UVM_MEDIUM)
-    ral.aes_core.CTRL_GCM_SHADOWED.update(status);
+
+    ral.aes_core.CTRL_GCM_SHADOWED.update(txn_status);
     if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to update CTRL_GCM_SHADOWED.")
 
     if (phase != phase_wr) begin
       // Reflect the resolution of invalid values in the abstraction class.
       ral.aes_core.CTRL_GCM_SHADOWED.PHASE.set(phase_prev);
       ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
       // Update the mirrored values.
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase_prev));
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
+      predict_gcm_shadowed(phase_prev, num_bytes);
       // Perform a readback to check that the DUT resolved potentially illegal phase value changes
       // correctly.
-      ral.aes_core.CTRL_GCM_SHADOWED.read(status, ctrl_gcm);
+      ral.aes_core.CTRL_GCM_SHADOWED.read(txn_status, ctrl_gcm);
+
       if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_GCM_SHADOWED.")
+
       if (ctrl_gcm.phase != phase_prev) begin
         `uvm_fatal(`gfn, $sformatf("Expected GCM phase %s, got %s",
-            phase_prev.name(), ctrl_gcm.phase.name()))
+                                   phase_prev.name(), ctrl_gcm.phase.name()))
       end
+
       // Repeat the update but now with the correct values.
       ral.aes_core.CTRL_GCM_SHADOWED.PHASE.set(phase);
       ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
@@ -360,31 +564,37 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
           $sformatf("Current GCM phase %s, writing %s",
           phase_prev.name(), phase.name()), UVM_MEDIUM)
       `uvm_info(`gfn, $sformatf("Writing num_bytes_valid %0d", num_bytes), UVM_MEDIUM)
-      ral.aes_core.CTRL_GCM_SHADOWED.write(status, ctrl_gcm);
+      ral.aes_core.CTRL_GCM_SHADOWED.write(txn_status, ctrl_gcm);
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write CTRL_GCM_SHADOWED.")
     end else if (num_bytes != num_bytes_wr) begin
       // Reflect the resolution of invalid values in the abstraction class and update the mirrored
       // values.
       ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.set(num_bytes);
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase));
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
+      predict_gcm_shadowed(phase, num_bytes);
     end else begin
       // Just update the mirrored values.
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.PHASE.predict(phase));
-      void'(ral.aes_core.CTRL_GCM_SHADOWED.NUM_VALID_BYTES.predict(num_bytes));
+      predict_gcm_shadowed(phase, num_bytes);
     end
   endtask
 
   virtual task add_data(ref bit [3:0] [31:0] data, bit do_b2b);
     int write_order[4] = {0,1,2,3};
+    write_order.shuffle();
 
     `uvm_info(`gfn, $sformatf("\n\t ----| ADDING DATA TO DUT %h ", data),  UVM_MEDIUM)
 
-    write_order.shuffle();
     foreach (write_order[i]) begin
+      uvm_status_e txn_status;
       int idx = write_order[i];
 
       `uvm_info(`gfn, $sformatf("\n\t ----| DATA_IN_%0d: %h ",idx,  data[idx]), UVM_HIGH)
-      ral.aes_core.DATA_IN[idx].write(status, data[idx][31:0]);
+      ral.aes_core.DATA_IN[idx].write(txn_status, data[idx][31:0]);
+
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(), $sformatf("Failed to write DATA_IN[%0d] register.", idx))
+      end
     end
   endtask
 
@@ -395,8 +605,15 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     read_order.shuffle();
 
     foreach (read_order[i]) begin
+      uvm_status_e txn_status;
       int idx = read_order[i];
-      ral.aes_core.DATA_OUT[idx].read(status, cypher_txt[idx]);
+      ral.aes_core.DATA_OUT[idx].read(txn_status, cypher_txt[idx]);
+
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) begin
+        `uvm_error(get_full_name(), $sformatf("Failed to read DATA_IN[%0d] register.", idx))
+      end
+
       `uvm_info(`gfn, $sformatf("\n\t ----| DATA_OUT_%0d: %h ",idx,  cypher_txt[idx]), UVM_HIGH)
     end
   endtask // read_data
@@ -418,7 +635,7 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     `DV_CHECK_STD_RANDOMIZE_FATAL(setup_mode)
     if ($urandom_range(1, 100) > 95) control_update_error = 1;
     idx_error_field = $urandom_range(0, 5);
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+    spinwait_status_idle();
     // Any successful update to the shadowed control register marks the start of a new message. If
     // sideload is enabled and a valid sideload key is available, it may be latched upon the second
     // write and - depending on KEY_TOUCH_FORCES_RESEED - trigger a reseed operation which prevents
@@ -434,6 +651,8 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
       set_sideload(item.sideload_en);
       if (cfg.under_reset) return;
     end else begin
+      uvm_status_e txn_status;
+
       // Assemble the intended value.
       ral.aes_core.CTRL_SHADOWED.OPERATION.set(item.operation);
       ral.aes_core.CTRL_SHADOWED.MODE.set(item.mode);
@@ -446,8 +665,9 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
         `uvm_info(`gfn, $sformatf("Triggering control update error in field %0d", idx_error_field),
             UVM_MEDIUM)
         // Perform the first write using the correct data.
-        ral.aes_core.CTRL_SHADOWED.update(status);
+        ral.aes_core.CTRL_SHADOWED.update(txn_status);
         if (cfg.under_reset) return;
+        if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to update CTRL_SHADOWED.")
 
         // Make sure at least one field is flipped.
         begin
@@ -462,13 +682,14 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
           endcase
         end
         // Perform the second write.
-        ral.aes_core.CTRL_SHADOWED.update(status);
+        ral.aes_core.CTRL_SHADOWED.update(txn_status);
         if (cfg.under_reset) return;
+        if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to update CTRL_SHADOWED.")
 
         // Check that we get the recoverable alert. It's possible that DV inserted a fatal error
         // condition before the second write could go through. The recovery from the fatal alert
         // is handled separately.
-        ral.aes_core.STATUS.read(status, aes_status);
+        read_status(aes_status);
         if (cfg.under_reset) return;
 
         `DV_CHECK_FATAL(aes_status.alert_recov_ctrl_update_err == 1'b1 ||
@@ -483,17 +704,18 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
       end
       // Perform the register update without control update error. This will resolve potential
       // previous update errors.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
       if (cfg.under_reset) return;
 
-      ral.aes_core.CTRL_SHADOWED.update(status);
+      ral.aes_core.CTRL_SHADOWED.update(txn_status);
       if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to update CTRL_SHADOWED.")
 
       // Make sure the update went through and there wasn't an update error. It's possible that DV
       // inserted a fatal error condition before the second write could go through. In this case,
       // the recoverable alert condition may still be visible together with the fatal alert. The
       // fatal alert is handled separately.
-      ral.aes_core.STATUS.read(status, aes_status);
+      read_status(aes_status);
       if (cfg.under_reset) return;
 
       `DV_CHECK_FATAL(aes_status.alert_recov_ctrl_update_err == 1'b0 ||
@@ -617,6 +839,7 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
                             "iv_0", "iv_1", "iv_2", "iv_3"};
       // if GCM mode, put AES into GCM_INIT before configuring the IP.
       set_gcm_phase(GCM_INIT, 16, 0, 0);
+      if (cfg.under_reset) return;
     end
 
     if (|item.clear_reg) begin
@@ -634,31 +857,50 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     txt = {txt, $sformatf("\n\t IS blocking %b", is_blocking) };
 
     for (int i = 0;  i < interleave_queue.size(); i++) begin
+      uvm_status_e txn_status;
       string csr_name = interleave_queue[i];
+
       txt = {txt, $sformatf("\n\t ----| \t %s",csr_name )};
 
       case (1)
         (!uvm_re_match("key_share0_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          ral.aes_core.KEY_SHARE0[idx].write(status, item.key[0][idx]);
+          ral.aes_core.KEY_SHARE0[idx].write(txn_status, item.key[0][idx]);
+          if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) begin
+            `uvm_error(get_full_name(), $sformatf("Failed to write %0s register.", csr_name))
+          end
           wait_on_reseed -= 1;
         end
         (!uvm_re_match("key_share1_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          ral.aes_core.KEY_SHARE1[idx].write(status, item.key[1][idx]);
-          wait_on_reseed -= 1;
+          ral.aes_core.KEY_SHARE1[idx].write(txn_status, item.key[1][idx]);
+          if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) begin
+            `uvm_error(get_full_name(), $sformatf("Failed to write %0s register.", csr_name))
+          end          wait_on_reseed -= 1;
         end
         (!uvm_re_match("iv_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          ral.aes_core.IV[idx].write(status, item.iv[idx]);
+          ral.aes_core.IV[idx].write(txn_status, item.iv[idx]);
+          if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) begin
+            `uvm_error(get_full_name(), $sformatf("Failed to write %0s register.", csr_name))
+          end
         end
         (!uvm_re_match("data_in_*", csr_name)): begin
           int idx = get_multireg_idx(csr_name);
-          ral.aes_core.DATA_IN[idx].write(status, data[idx]);
+          ral.aes_core.DATA_IN[idx].write(txn_status, data[idx]);
+          if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) begin
+            `uvm_error(get_full_name(), $sformatf("Failed to write %0s register.", csr_name))
+          end
         end
         (csr_name == "clear_reg"): begin
           clear_regs(item.clear_reg);
-          ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+          if (cfg.under_reset) return;
+          spinwait_status_idle();
+          if (cfg.under_reset) return;
           // manual mode requires all to be written again
           if (manual_operation) begin
             //remove clear from queue
@@ -674,14 +916,17 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
         if (cfg.error_types.mal_inject && $urandom(3)==0 && !manual_operation) begin
           int wr_reg = $urandom_range(3,1);
           case (wr_reg)
-            1: ral.aes_core.KEY_SHARE0[$urandom(7)].write(status, $urandom());
-            2: ral.aes_core.IV[$urandom(3)].write(status, $urandom());
-            3: ral.aes_core.DATA_IN[$urandom(3)].write(status, $urandom());
+            1: ral.aes_core.KEY_SHARE0[$urandom(7)].write(txn_status, $urandom());
+            2: ral.aes_core.IV[$urandom(3)].write(txn_status, $urandom());
+            3: ral.aes_core.DATA_IN[$urandom(3)].write(txn_status, $urandom());
             default: `uvm_fatal(`gfn, $sformatf("UNREACHABLE BUT NEEDED DUE TO SYNTAX CHECK"))
           endcase
+          if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write register.")
         end
         status_fsm(item, data_item, new_msg,
                    manual_operation, sideload_en, return_on_idle, read_output, aes_status, rst_set);
+        if (cfg.under_reset) return;
         wait_on_reseed = 16;
       end
       if (rst_set) break;
@@ -1012,14 +1257,22 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
 
       // sometimes randomly write a reg while busy
       if (!manual_operation && cfg.error_types.mal_inject && ($urandom(3) == 1)) begin
-        int wr_reg = $urandom_range(3,1);
-        case (wr_reg)
-          1: ral.aes_core.KEY_SHARE0[$urandom(7)].write(status, $urandom());
-          2: ral.aes_core.IV[$urandom(3)].write(status, $urandom());
-          3: ral.aes_core.DATA_IN[$urandom(3)].write(status, $urandom());
-          default: `uvm_fatal(`gfn, $sformatf("UNREACHABLE BUT NEEDED DUE TO SYNTAX CHECK"))
+        uvm_status_e txn_status;
+        uvm_reg      reg_to_write;
+
+        randcase
+          1: reg_to_write = ral.aes_core.KEY_SHARE0[$urandom(7)];
+          1: reg_to_write = ral.aes_core.IV[$urandom(3)];
+          1: reg_to_write = ral.aes_core.DATA_IN[$urandom(3)];
         endcase
+
+        reg_to_write.write(txn_status, $urandom());
+
         if (cfg.under_reset) return;
+        if (txn_status != UVM_IS_OK) begin
+          `uvm_error(get_full_name(),
+                     $sformatf("Failed to write %0s register.", reg_to_write.get_name()))
+        end
       end
     end
 
@@ -1102,7 +1355,7 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
 
     // enable get status when provided with an empty Item.
     if (data_item.mode === 'X) begin
-      ral.aes_core.STATUS.read(status, aes_status);
+      read_status(aes_status);
       if (cfg.under_reset) return;
     end
 
@@ -1110,7 +1363,7 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
       if (cfg.under_reset) return;
 
       //read the status register to see that we have triggered the operation
-      ral.aes_core.STATUS.read(status, aes_status);
+      read_status(aes_status);
       if (cfg.under_reset) return;
 
       txt = {txt, "\n ----|reading STATUS", status2string(aes_status)};
@@ -1123,7 +1376,8 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
                               status2string(aes_status)), UVM_MEDIUM)
           try_recover(cfg_item, data_item, manual_operation, sideload_en, new_msg);
           if (cfg.under_reset) return;
-          ral.aes_core.STATUS.read(status, aes_status);
+
+          read_status(aes_status);
           if (cfg.under_reset) return;
 
           if ( !aes_status.alert_fatal_fault) begin
@@ -1243,13 +1497,17 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     ctrl_reg_t            ctrl;
     status_t              aes_status;         // the current AES aes_status
     bit                   is_blocking = ~cfg_item.do_b2b;
-    ral.aes_core.CTRL_SHADOWED.read(status, ctrl);
+    uvm_status_e          txn_status;
+
+    ral.aes_core.CTRL_SHADOWED.read(txn_status, ctrl);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read CTRL_SHADOWED.")
+
     ral.aes_core.CTRL_SHADOWED.OPERATION.set(cfg_item.operation);
     ral.aes_core.CTRL_SHADOWED.MODE.set(cfg_item.mode);
     ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(cfg_item.key_len);
     ral.aes_core.CTRL_SHADOWED.MANUAL_OPERATION.set(cfg_item.manual_op);
     ral.aes_core.CTRL_SHADOWED.SIDELOAD.set(cfg_item.sideload_en);
-    if (cfg.under_reset) return;
 
     // key and IV missing clear all and rewrite (a soon to come update will merge
     // the clear options into a single bit)
@@ -1266,25 +1524,35 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
     end
 
     // check for fatal
-    ral.aes_core.STATUS.read(status, aes_status);
+    read_status(aes_status);
     if (cfg.under_reset) return;
 
     if (!aes_status.alert_fatal_fault) begin
       // wait for idle
-      if (!aes_status.idle)  ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      if (!aes_status.idle) begin
+        spinwait_status_idle();
+        if (cfg.under_reset) return;
+      end
+
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
+
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
     end else begin
       // if alert just try to update ctrl and everything else
-      ral.aes_core.CTRL_SHADOWED.update(status);
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
     end
-    if (cfg.under_reset) return;
 
     // Read the main control register. This will update the mirrored values thereby getting them
     // back in sync with the DUT (updated via csr_update() above) and the predicted values (updated
     // via set() above).
-    ral.aes_core.CTRL_SHADOWED.read(status, ctrl, .path(UVM_BACKDOOR));
+    ral.aes_core.CTRL_SHADOWED.read(txn_status, ctrl, .path(UVM_BACKDOOR));
     if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) begin
+      `uvm_error(get_full_name(), "Failed to backdoor-read CTRL_SHADOWED register.")
+    end
 
     if (cfg_item.mode == AES_GCM && !aes_status.alert_fatal_fault) begin
       // As we are splitting the message, we also need to recalculate the length
@@ -1344,11 +1612,11 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
 
     // wait for reseed but check for fatal
     // if fatal idle will never come
-    ral.aes_core.STATUS.read(status, aes_status);
+    read_status(aes_status);
     if (cfg.under_reset) return;
 
     if (!aes_status.alert_fatal_fault && !aes_status.idle) begin
-      if (cfg.reseed_en) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      if (cfg.reseed_en) spinwait_status_idle();
       if (cfg.under_reset) return;
     end
     write_iv(cfg_item.iv, is_blocking);
@@ -1426,9 +1694,9 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
             // done, causing that task to clear key_used again and exit.
             key_used = 1;
 
-            if (!cfg.under_reset) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+            if (!cfg.under_reset) spinwait_status_idle();
             if (!cfg.under_reset) clear_regs(2'b11);
-            if (!cfg.under_reset) ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+            if (!cfg.under_reset) spinwait_status_idle();
           end
         end
       join
@@ -1466,6 +1734,9 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
   virtual task post_body();
 
     if (cfg.en_scb) begin
+      bit [31:0] idle_mask = 32'h1 << ral.aes_core.STATUS.IDLE.get_lsb_pos();
+      bit [31:0] output_valid_mask = 32'h1 << ral.aes_core.STATUS.OUTPUT_VALID.get_lsb_pos();
+
       // AES indicates when it's done with processing individual blocks but not when it's done
       // with processing an entire message. To detect the end of a message, the DV environment
       // does the following:
@@ -1477,10 +1748,12 @@ class aes_base_vseq extends dv_base_vseq #(.CFG_T               (aes_env_cfg),
       // end of the last message, and trigger its scoring, the `finish_message` variable is set.
       // It gets read by the `rebuild_message()` task in the scoreboard.
       //
-      // Before doing this, wait for the DUT to become idle and final output to be read.
+      // Before doing this, wait for the DUT to become idle and final output to have been read (so
+      // output_valid is false).
       `uvm_info(`gfn, "waiting for DUT to become idle and final output to be read", UVM_MEDIUM)
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
-      ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b0);
+      masked_spinwait_register(ral.aes_core.STATUS,
+                               idle_mask,
+                               idle_mask | output_valid_mask);
       `uvm_info(`gfn, "sending finish_message", UVM_MEDIUM)
       cfg.finish_message = 1;
     end
