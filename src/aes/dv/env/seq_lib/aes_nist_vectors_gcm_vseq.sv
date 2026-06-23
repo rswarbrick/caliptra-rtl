@@ -54,7 +54,9 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       int aad_block_zero = num_aad_blocks == 0 ? 1 : 0;
       int ptx_block_zero = num_ptx_blocks == 0 ? 1 : 0;
       // Wait for dut idle.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       `uvm_info(`gfn, $sformatf("%s", vectorgcm2string(nist_vectors[i]) ), UVM_LOW)
       `uvm_info(`gfn, $sformatf(" \n\t ---|setting operation to encrypt"), UVM_MEDIUM)
 
@@ -63,11 +65,8 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(nist_vectors[i].key_len);
       ral.aes_core.CTRL_SHADOWED.MODE.set(nist_vectors[i].mode);
       ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.set(PER_8K);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(AES_ENC));
-      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(nist_vectors[i].key_len));
-      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(nist_vectors[i].mode));
-      void'(ral.aes_core.CTRL_SHADOWED.PRNG_RESEED_RATE.predict(PER_8K));
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
 
       // Put AES-GCM into init phase.
       cov_if.cg_ctrl_gcm_reg_sample(GCM_INIT);
@@ -79,7 +78,9 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       write_key(init_key, do_b2b);
 
       // Write IV registers.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       // Transpose IV to match NIST format (little endian).
       iv = {<<8{nist_vectors[i].iv}};
       write_iv(iv, do_b2b);
@@ -97,7 +98,9 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
 
         // Write all except the last AAD block into the data registers.
         for (int n = 0; n < num_aad_blocks - 1; n++) begin
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           aad[n] = {<<8{nist_vectors[i].aad[n]}};
           add_data(aad[n], do_b2b);
         end
@@ -109,7 +112,9 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
           set_gcm_phase(GCM_AAD, last_aad_block_size, 1, 0);
         end
         // Write last AAD block to AES.
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
+
         aad[num_aad_blocks - 1] = {<<8{nist_vectors[i].aad[num_aad_blocks - 1]}};
         add_data(aad[num_aad_blocks - 1], do_b2b);
       end
@@ -127,11 +132,14 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
 
         // Write all except the last PTX block into the data registers.
         for (int n = 0; n < num_ptx_blocks - 1; n++) begin
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           plain_text[n] = {<<8{nist_vectors[i].plain_text[n]}};
           add_data(plain_text[n], do_b2b);
           // Read ciphertext.
-          ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+          spinwait_output_valid();
+          if (cfg.under_reset) return;
           read_data(cipher_text[n], do_b2b);
         end
 
@@ -142,12 +150,15 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
           set_gcm_phase(GCM_TEXT, last_plain_text_block_size, 1, 0);
         end
         // Write last PTX block to AES.
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
+
         plain_text[num_ptx_blocks - 1] =
           {<<8{nist_vectors[i].plain_text[num_ptx_blocks - 1]}};
         add_data(plain_text[num_ptx_blocks - 1], do_b2b);
         // Read ciphertext.
-        ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+        spinwait_output_valid();
+        if (cfg.under_reset) return;
         read_data(cipher_text[num_ptx_blocks - 1], do_b2b);
 
         // Compare the received cipher text to the NIST test vector.
@@ -165,11 +176,13 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       // Put AES-GCM into TAG mode and write len(ad) || len(pt).
       cov_if.cg_ctrl_gcm_reg_sample(GCM_TAG);
       set_gcm_phase(GCM_TAG, 16, 1, 0);
-      ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+      spinwait_input_ready();
+      if (cfg.under_reset) return;
       len_ctx_aad = {<<8{nist_vectors[i].len_ctx_aad}};
       add_data(len_ctx_aad, do_b2b);
       // Read out the tag.
-      ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+      spinwait_output_valid();
+      if (cfg.under_reset) return;
       read_data(tag, do_b2b);
       tag = {<<8{tag}};
       if (nist_vectors[i].tag != tag) begin
@@ -187,17 +200,16 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       /** AES-GCM-128 Decryption                                                  **/
       /*****************************************************************************/
       // Wait for dut idle.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
       `uvm_info(`gfn, $sformatf(" \n\t ---|setting operation to decrypt"), UVM_MEDIUM)
 
       // Config AES core.
       ral.aes_core.CTRL_SHADOWED.OPERATION.set(AES_DEC);
       ral.aes_core.CTRL_SHADOWED.KEY_LEN.set(nist_vectors[i].key_len);
       ral.aes_core.CTRL_SHADOWED.MODE.set(nist_vectors[i].mode);
-      ral.aes_core.CTRL_SHADOWED.update(status);
-      void'(ral.aes_core.CTRL_SHADOWED.OPERATION.predict(AES_DEC));
-      void'(ral.aes_core.CTRL_SHADOWED.KEY_LEN.predict(nist_vectors[i].key_len));
-      void'(ral.aes_core.CTRL_SHADOWED.MODE.predict(nist_vectors[i].mode));
+      double_update_to_desired(ral.aes_core.CTRL_SHADOWED);
+      if (cfg.under_reset) return;
 
       // Put AES-GCM into init phase.
       cov_if.cg_ctrl_gcm_reg_sample(GCM_INIT);
@@ -209,7 +221,8 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       write_key(init_key, do_b2b);
 
       // Write IV registers.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
       // Transpose IV to match NIST format (little endian).
       iv = {<<8{nist_vectors[i].iv}};
       write_iv(iv, do_b2b);
@@ -227,7 +240,8 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
 
         // Write all except the last AAD block into the data registers.
         for (int n = 0; n < num_aad_blocks - 1; n++) begin
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
           aad[n] = {<<8{nist_vectors[i].aad[n]}};
           add_data(aad[n], do_b2b);
         end
@@ -239,7 +253,8 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
           set_gcm_phase(GCM_AAD, last_aad_block_size, 1, 0);
         end
         // Write last AAD block to AES.
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
         aad[num_aad_blocks - 1] = {<<8{nist_vectors[i].aad[num_aad_blocks - 1]}};
         add_data(aad[num_aad_blocks - 1], do_b2b);
       end
@@ -257,11 +272,16 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
 
         // Write all except the last CTX block into the data registers.
         for (int n = 0; n < num_ptx_blocks - 1; n++) begin
-          ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+          spinwait_input_ready();
+          if (cfg.under_reset) return;
+
           cipher_text[n] = {<<8{nist_vectors[i].cipher_text[n]}};
           add_data(cipher_text[n], do_b2b);
+
           // Read ciphertext.
-          ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+          spinwait_output_valid();
+          if (cfg.under_reset) return;
+
           read_data(plain_text[n], do_b2b);
         end
 
@@ -272,12 +292,17 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
           set_gcm_phase(GCM_TEXT, last_plain_text_block_size, 1, 0);
         end
         // Write last CTX block to AES.
-        ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+        spinwait_input_ready();
+        if (cfg.under_reset) return;
+
         cipher_text[num_ptx_blocks - 1] =
           {<<8{nist_vectors[i].cipher_text[num_ptx_blocks - 1]}};
         add_data(cipher_text[num_ptx_blocks - 1], do_b2b);
+
         // Read ciphertext.
-        ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+        spinwait_output_valid();
+        if (cfg.under_reset) return;
+
         read_data(plain_text[num_ptx_blocks - 1], do_b2b);
 
         // Compare the received plain text to the NIST test vector.
@@ -295,11 +320,14 @@ class aes_nist_vectors_gcm_vseq extends aes_base_vseq;
       // Put AES-GCM into TAG mode and write len(ad) || len(pt).
       cov_if.cg_ctrl_gcm_reg_sample(GCM_TAG);
       set_gcm_phase(GCM_TAG, 16, 1, 0);
-      ral_spinwait(ral.aes_core.STATUS.INPUT_READY, 1'b1);
+      spinwait_input_ready();
+      if (cfg.under_reset) return;
       len_ctx_aad = {<<8{nist_vectors[i].len_ctx_aad}};
       add_data(len_ctx_aad, do_b2b);
       // Read out the tag.
-      ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+      spinwait_output_valid();
+      if (cfg.under_reset) return;
+
       read_data(tag, do_b2b);
       tag = {<<8{tag}};
       if (nist_vectors[i].tag != tag) begin

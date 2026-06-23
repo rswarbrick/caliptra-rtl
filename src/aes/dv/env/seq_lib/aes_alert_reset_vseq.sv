@@ -25,8 +25,16 @@ class aes_alert_reset_vseq extends aes_base_vseq;
     expect_fatal_alerts = 1;
   endtask
 
-  task body();
+  // Write wdata to ALERT_TEST. Exit early on reset.
+  task write_alert_test(uvm_reg_data_t wdata);
+    uvm_status_e txn_status;
 
+    ral.alert_test.write(txn_status, wdata);
+    if (cfg.under_reset) return;
+    if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to write ALERT_TEST.")
+  endtask
+
+  task body();
     `uvm_info(`gfn, $sformatf("\n\n\t ----| STARTING AES MAIN SEQUENCE |----\n %s",
                               cfg.convert2string()), UVM_LOW)
 
@@ -66,7 +74,8 @@ class aes_alert_reset_vseq extends aes_base_vseq;
                cfg.lc_escalate_vif.drive('0);
             end else if (cfg.alert_reset_trigger == AlertTest) begin
               `uvm_info(`gfn, "Writing alert test CSR", UVM_MEDIUM)
-              ral.alert_test.write(status, alert_test_value);
+              write_alert_test(alert_test_value);
+              if (cfg.under_reset) return;
               // Wait to see the actual alert signal. Note that the DUT doesn't block even if the
               // fatal_fault alert has been triggered.
               fork
@@ -82,7 +91,8 @@ class aes_alert_reset_vseq extends aes_base_vseq;
                 end
               join
               // Clear alert test CSR.
-              ral.alert_test.write(status, 0);
+              write_alert_test(0);
+              if (cfg.under_reset) return;
             end
           end
           basic: begin

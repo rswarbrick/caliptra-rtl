@@ -79,11 +79,11 @@ class aes_reseed_vseq extends aes_base_vseq;
 
     if (`EN_MASKING) begin
       check_masking_prng_reseed();
+      if (cfg.under_reset) return;
     end
-    if (cfg.under_reset) return;
 
     // Wait for the DUT to become idle again. This happens once the reseed operation finishes.
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+    spinwait_status_idle();
   endtask
 
   // Wait a cycle and check that no reseed operation has been triggered.
@@ -106,7 +106,7 @@ class aes_reseed_vseq extends aes_base_vseq;
     if (!std::randomize(init_key)) `uvm_fatal(get_name(), "Failed to randomize init_key")
 
     // Wait for the DUT to be idle before writing the key.
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+    spinwait_status_idle();
     if (cfg.under_reset) return;
 
     if (cfg.do_reseed) begin
@@ -147,7 +147,7 @@ class aes_reseed_vseq extends aes_base_vseq;
       bit sideload_valid;
       bit sideload_enabled;
 
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
       if (cfg.under_reset) return;
 
       // Make sure sideload is disabled.
@@ -278,8 +278,12 @@ class aes_reseed_vseq extends aes_base_vseq;
         end else if (block_ctr == 0) begin
           // Check whether the DUT is actually busy. Unless it's doing a block operation, no reseed
           // operation is getting triggered.
-          ral.aes_core.STATUS.read(status, aes_status, .path(UVM_BACKDOOR));
+          uvm_status_e txn_status;
+          ral.aes_core.STATUS.read(txn_status, aes_status, .path(UVM_BACKDOOR));
           if (cfg.under_reset) return;
+          if (txn_status != UVM_IS_OK) begin
+            `uvm_error(get_full_name(), "Failed to backdoor-read STATUS register.")
+          end
 
           `DV_CHECK_FATAL(uvm_hdl_read(cipher_crypt_path, cipher_crypt))
           if (!aes_status.idle && cipher_crypt) begin

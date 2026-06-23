@@ -56,7 +56,10 @@ class aes_deinit_vseq extends aes_base_vseq;
       // clear the output registers
       clear.dataout = 1'b1;
       clear_regs(clear);
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       read_data(data, back2back);
 
       if ((data == prev_data) || (data == 32'h00000000)) begin
@@ -73,7 +76,10 @@ class aes_deinit_vseq extends aes_base_vseq;
     // now clear key/iv/data and try to manually trigger an operation
     clear.key_iv_data_in = 1'b1;
     clear_regs(clear);
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+
+    spinwait_status_idle();
+    if (cfg.under_reset) return;
+
     // make sure that IV was cleared
     read_iv(data, back2back);
 
@@ -86,13 +92,21 @@ class aes_deinit_vseq extends aes_base_vseq;
 
     // make sure we cant trigger an operation
     trigger();
-    ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
-    for (int nn = 0; nn <10; nn++) begin
-        ral.aes_core.STATUS.read(status, aes_status);
-        if ((!aes_status.idle && !aes_status.alert_fatal_fault) || aes_status.output_valid)
-          `uvm_fatal(`gfn, $sformatf("WAS ABLE TO TRIGGER OPERATION AFTER CLEAR MODE"))
 
-        cfg.clk_rst_vif.wait_clks(25);
-      end
+    spinwait_status_idle();
+    if (cfg.under_reset) return;
+
+    for (int nn = 0; nn <10; nn++) begin
+      uvm_status_e   txn_status;
+      ral.aes_core.STATUS.read(txn_status, aes_status);
+
+      if (cfg.under_reset) return;
+      if (txn_status != UVM_IS_OK) `uvm_error(get_full_name(), "Failed to read STATUS.")
+
+      if ((!aes_status.idle && !aes_status.alert_fatal_fault) || aes_status.output_valid)
+        `uvm_fatal(`gfn, $sformatf("WAS ABLE TO TRIGGER OPERATION AFTER CLEAR MODE"))
+
+      cfg.clk_rst_vif.wait_clks(25);
+    end
   endtask : body
 endclass

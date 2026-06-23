@@ -16,7 +16,6 @@ class aes_manual_config_err_vseq extends aes_base_vseq;
   clear_t            clear      = 2'b00;
   aes_seq_item       cfg_item   = new();
   aes_seq_item       data_item  = new();
-  status_t           aes_status;
 
   task body();
     `uvm_info(`gfn, $sformatf("\n\n\t ----| STARTING AES MANUAL/ERROR SEQUENCE |----\n %s",
@@ -41,13 +40,16 @@ class aes_manual_config_err_vseq extends aes_base_vseq;
       cfg_item = aes_item_queue.pop_back();
 
       // Wait until the DUT is idle. This is required to start the configuration.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
+
       // Configure the DUT. Depending on the configuration, this might trigger a PRNG reseed
       // operation.
       setup_dut(cfg_item);
 
       // Wait until the DUT is idle. This is required to provide key and IV.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
       // Provide key, IV and data. This will also reconfigure the DUT with the illegal mode
       // setting. This might trigger a PRNG reseed operation again. The test configures the DUT
       // in automatic mode, i.e., upon providing key, IV and data, it would automatically start
@@ -56,7 +58,8 @@ class aes_manual_config_err_vseq extends aes_base_vseq;
       write_data_key_iv(cfg_item, data_item, 1, 0, 0, 0, rst_set);
 
       // Wait until the DUT is idle.
-      ral_spinwait(ral.aes_core.STATUS.IDLE, 1'b1);
+      spinwait_status_idle();
+      if (cfg.under_reset) return;
 
       // Try to manually start the DUT. As it's configured in automatic mode, this should have
       // no effect.
@@ -66,7 +69,10 @@ class aes_manual_config_err_vseq extends aes_base_vseq;
       // produce valid output. Both would mean that we were able to trigger an encryption or
       // decryption operation with an illegal mode setting.
       for (int nn = 0; nn < 20; nn++) begin
-        ral.aes_core.STATUS.read(status, aes_status);
+        status_t aes_status;
+        read_status(aes_status);
+        if (cfg.under_reset) return;
+
         if (!aes_status.idle || aes_status.output_valid) begin
           `uvm_fatal(`gfn, $sformatf("WAS ABLE TO TRIGGER OPERATION WITH ILLEGAL MODE"))
         end

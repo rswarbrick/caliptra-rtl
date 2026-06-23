@@ -48,7 +48,9 @@ task aes_wake_up_vseq::body();
   `uvm_info(`gfn, $sformatf("\n\t ---| Polling for data register %s",
                             ral.aes_core.STATUS.convert2string()), UVM_DEBUG)
 
-  ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+  spinwait_output_valid();
+  if (cfg.under_reset) return;
+
   read_data(cypher_text, do_b2b);
   // read output
   `uvm_info(`gfn, $sformatf("\n\t ------|WAIT 0 |-------"), UVM_HIGH)
@@ -72,7 +74,10 @@ task aes_wake_up_vseq::body();
             UVM_DEBUG)
 
   cfg.clk_rst_vif.wait_clks(20);
-  ral_spinwait(ral.aes_core.STATUS.OUTPUT_VALID, 1'b1);
+
+  spinwait_output_valid();
+  if (cfg.under_reset) return;
+
   read_data(decrypted_text, do_b2b);
   //need scoreboard disable
   foreach(plain_text[i]) begin
