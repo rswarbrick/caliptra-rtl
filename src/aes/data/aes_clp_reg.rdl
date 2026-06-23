@@ -13,11 +13,6 @@
 // limitations under the License.
 //
 
-// Pull in the OT AES core register definitions so we can instantiate them as a sub-addrmap below.
-// The wrapper's AHB decoder routes accesses with offset >= 0x800 to the OT AES core's TLUL, so
-// the RAL should reflect that by exposing those CSRs as a sub-block at the same offset.
-`include "aes.rdl"
-
 addrmap aes_clp_reg {
     desc="address maps for AES register space";
 
@@ -399,16 +394,5 @@ addrmap aes_clp_reg {
      * Register File instance
      * ----------------------- */
     intr_block_t intr_block_rf @0x400;
-
-    /* -----------------------
-     * OT AES core register file (sub-addrmap)
-     *
-     * Defined in aes.rdl. Declared `external` because the synthesisable RTL for these registers
-     * already exists as `aes_reg_top.sv` inside the AES core; peakrdl-regblock must NOT generate
-     * a second implementation. peakrdl-uvm still emits the RAL classes for this sub-block, and
-     * `default_map.add_submap` is generated automatically so that ral.aes_core.CTRL_SHADOWED etc.
-     * resolve to absolute addresses 0x800 + offset.
-     * ----------------------- */
-    external aes aes_core @0x800;
 
 };

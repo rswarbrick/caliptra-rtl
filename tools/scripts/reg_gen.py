@@ -212,6 +212,8 @@ def export(
     rtl_output_dir: Path,
     dv_output_dir: Path,
     build_cov: bool,
+    dv_only: bool = False,
+    rtl_only: bool = False,
 ) -> None:
     """Export all generated artefacts from an elaborated register model.
 
@@ -253,25 +255,32 @@ def export(
         build_cov: When ``True``, also emit the coverage scaffolding
             files.
     """
-    # Emit synthesisable register block RTL
-    exporter = RegblockExporter()
-    exporter.export(
-        root, rtl_output_dir,
-        cpuif_cls=PassthroughCpuif,
-        retime_read_response=False
-    )
+    # Emit synthesisable register block RTL (unless this is a DV-only composite
+    # whose sub-addrmaps are already implemented as standalone regblocks).
+    if not dv_only:
+        exporter = RegblockExporter()
+        exporter.export(
+            root, rtl_output_dir,
+            cpuif_cls=PassthroughCpuif,
+            retime_read_response=False
+        )
 
-    # Emit UVM RAL model
-    uvm_out = dv_output_dir / f"{rdl_file.stem}_uvm.sv"
-    exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/uvm")
-    exporter.export(root, str(uvm_out), use_uvm_factory=True)
-    rdl_post_process.strip_trailing_whitespace(uvm_out)
+    # Emit UVM RAL model (unless this is an RTL-only run for a regblock whose RAL is
+    # produced from a separate composite RDL).
+    if not rtl_only:
+        uvm_out = dv_output_dir / f"{rdl_file.stem}_uvm.sv"
+        exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/uvm")
+        exporter.export(root, str(uvm_out), use_uvm_factory=True)
+        rdl_post_process.strip_trailing_whitespace(uvm_out)
 
-    if build_cov:
-        exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/cov")
-        exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_covergroups.svh"))
-        exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/smp")
-        exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_sample.svh"))
+        if build_cov:
+            exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/cov")
+            exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_covergroups.svh"))
+            exporter = UVMExporter(user_template_dir=repo_root / "tools/templates/rdl/smp")
+            exporter.export(root, str(dv_output_dir / f"{rdl_file.stem}_sample.svh"))
+
+    if dv_only:
+        return
 
     # Traverse the register model with two listeners:
     #   * SVPkgAppendingListener — append the address-width localparam to the pkg
@@ -310,7 +319,18 @@ def main() -> None:
     parser.add_argument('--dv-output', default=None,
                         help='Output directory for DV files ({stem}_uvm.sv and coverage '
                              'scaffolding). Defaults to the directory containing the RDL file.')
+    parser.add_argument('--dv-only', action='store_true',
+                        help='Emit only the UVM RAL model (skip the synthesisable regblock RTL). '
+                             'Use for composite addrmaps whose sub-blocks are already implemented '
+                             'as standalone regblocks elsewhere.')
+    parser.add_argument('--rtl-only', action='store_true',
+                        help='Emit only the synthesisable regblock RTL (skip the UVM RAL and '
+                             'coverage scaffolding). Use when the RAL is produced from a '
+                             'separate composite RDL.')
     args = parser.parse_args()
+    if args.dv_only and args.rtl_only:
+        print("Error: --dv-only and --rtl-only are mutually exclusive.")
+        sys.exit(1)
 
     rdl_file = Path(args.rdl_file)
     default_output_dir = rdl_file.resolve().parent
@@ -333,7 +353,8 @@ def main() -> None:
         rdlc.register_udp(udp)
 
     root = compile_and_elaborate(rdlc, repo_root, rdl_file, parameters)
-    export(root, repo_root, rdl_file, rtl_output_dir, dv_output_dir, args.cov)
+    export(root, repo_root, rdl_file, rtl_output_dir, dv_output_dir, args.cov,
+           dv_only=args.dv_only, rtl_only=args.rtl_only)
 
 
 if __name__ == '__main__':

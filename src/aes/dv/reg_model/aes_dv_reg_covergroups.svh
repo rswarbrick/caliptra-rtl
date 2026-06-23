@@ -12,9 +12,261 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-`ifndef AES_CLP_REG_COVERGROUPS
-    `define AES_CLP_REG_COVERGROUPS
+`ifndef AES_DV_REG_COVERGROUPS
+    `define AES_DV_REG_COVERGROUPS
     
+    /*----------------------- AES__KEY_SHARE0 COVERGROUPS -----------------------*/
+    covergroup aes__KEY_SHARE0_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__KEY_SHARE0_fld_cg with function sample(
+    input bit [32-1:0] KEY_SHARE0
+    );
+        option.per_instance = 1;
+        KEY_SHARE0_cp : coverpoint KEY_SHARE0;
+
+    endgroup
+
+    /*----------------------- AES__KEY_SHARE1 COVERGROUPS -----------------------*/
+    covergroup aes__KEY_SHARE1_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__KEY_SHARE1_fld_cg with function sample(
+    input bit [32-1:0] KEY_SHARE1
+    );
+        option.per_instance = 1;
+        KEY_SHARE1_cp : coverpoint KEY_SHARE1;
+
+    endgroup
+
+    /*----------------------- AES__IV COVERGROUPS -----------------------*/
+    covergroup aes__IV_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__IV_fld_cg with function sample(
+    input bit [32-1:0] IV
+    );
+        option.per_instance = 1;
+        IV_cp : coverpoint IV;
+
+    endgroup
+
+    /*----------------------- AES__DATA_IN COVERGROUPS -----------------------*/
+    covergroup aes__DATA_IN_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__DATA_IN_fld_cg with function sample(
+    input bit [32-1:0] DATA_IN
+    );
+        option.per_instance = 1;
+        DATA_IN_cp : coverpoint DATA_IN;
+
+    endgroup
+
+    /*----------------------- AES__DATA_OUT COVERGROUPS -----------------------*/
+    covergroup aes__DATA_OUT_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__DATA_OUT_fld_cg with function sample(
+    input bit [32-1:0] DATA_OUT
+    );
+        option.per_instance = 1;
+        DATA_OUT_cp : coverpoint DATA_OUT;
+
+    endgroup
+
+    /*----------------------- AES__CTRL_SHADOWED COVERGROUPS -----------------------*/
+    covergroup aes__CTRL_SHADOWED_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__CTRL_SHADOWED_fld_cg with function sample(
+    input bit [2-1:0] OPERATION,
+    input bit [6-1:0] MODE,
+    input bit [3-1:0] KEY_LEN,
+    input bit [1-1:0] SIDELOAD,
+    input bit [3-1:0] PRNG_RESEED_RATE,
+    input bit [1-1:0] MANUAL_OPERATION
+    );
+        option.per_instance = 1;
+        OPERATION_cp : coverpoint OPERATION;
+        MODE_cp : coverpoint MODE;
+        KEY_LEN_cp : coverpoint KEY_LEN;
+        SIDELOAD_cp : coverpoint SIDELOAD;
+        PRNG_RESEED_RATE_cp : coverpoint PRNG_RESEED_RATE;
+        MANUAL_OPERATION_cp : coverpoint MANUAL_OPERATION;
+
+    endgroup
+
+    /*----------------------- AES__CTRL_AUX_SHADOWED COVERGROUPS -----------------------*/
+    covergroup aes__CTRL_AUX_SHADOWED_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__CTRL_AUX_SHADOWED_fld_cg with function sample(
+    input bit [1-1:0] KEY_TOUCH_FORCES_RESEED,
+    input bit [1-1:0] FORCE_MASKS
+    );
+        option.per_instance = 1;
+        KEY_TOUCH_FORCES_RESEED_cp : coverpoint KEY_TOUCH_FORCES_RESEED;
+        FORCE_MASKS_cp : coverpoint FORCE_MASKS;
+
+    endgroup
+
+    /*----------------------- AES__CTRL_AUX_REGWEN COVERGROUPS -----------------------*/
+    covergroup aes__CTRL_AUX_REGWEN_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__CTRL_AUX_REGWEN_fld_cg with function sample(
+    input bit [1-1:0] CTRL_AUX_REGWEN
+    );
+        option.per_instance = 1;
+        CTRL_AUX_REGWEN_cp : coverpoint CTRL_AUX_REGWEN;
+
+    endgroup
+
+    /*----------------------- AES__TRIGGER COVERGROUPS -----------------------*/
+    covergroup aes__TRIGGER_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__TRIGGER_fld_cg with function sample(
+    input bit [1-1:0] START,
+    input bit [1-1:0] KEY_IV_DATA_IN_CLEAR,
+    input bit [1-1:0] DATA_OUT_CLEAR,
+    input bit [1-1:0] PRNG_RESEED
+    );
+        option.per_instance = 1;
+        START_cp : coverpoint START;
+        KEY_IV_DATA_IN_CLEAR_cp : coverpoint KEY_IV_DATA_IN_CLEAR;
+        DATA_OUT_CLEAR_cp : coverpoint DATA_OUT_CLEAR;
+        PRNG_RESEED_cp : coverpoint PRNG_RESEED;
+
+    endgroup
+
+    /*----------------------- AES__STATUS COVERGROUPS -----------------------*/
+    covergroup aes__STATUS_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__STATUS_fld_cg with function sample(
+    input bit [1-1:0] IDLE,
+    input bit [1-1:0] STALL,
+    input bit [1-1:0] OUTPUT_LOST,
+    input bit [1-1:0] OUTPUT_VALID,
+    input bit [1-1:0] INPUT_READY,
+    input bit [1-1:0] ALERT_RECOV_CTRL_UPDATE_ERR,
+    input bit [1-1:0] ALERT_FATAL_FAULT
+    );
+        option.per_instance = 1;
+        IDLE_cp : coverpoint IDLE;
+        STALL_cp : coverpoint STALL;
+        OUTPUT_LOST_cp : coverpoint OUTPUT_LOST;
+        OUTPUT_VALID_cp : coverpoint OUTPUT_VALID;
+        INPUT_READY_cp : coverpoint INPUT_READY;
+        ALERT_RECOV_CTRL_UPDATE_ERR_cp : coverpoint ALERT_RECOV_CTRL_UPDATE_ERR;
+        ALERT_FATAL_FAULT_cp : coverpoint ALERT_FATAL_FAULT;
+
+    endgroup
+
+    /*----------------------- AES__CTRL_GCM_SHADOWED COVERGROUPS -----------------------*/
+    covergroup aes__CTRL_GCM_SHADOWED_bit_cg with function sample(input bit reg_bit);
+        option.per_instance = 1;
+        reg_bit_cp : coverpoint reg_bit {
+            bins value[2] = {0,1};
+        }
+        reg_bit_edge_cp : coverpoint reg_bit {
+            bins rise = (0 => 1);
+            bins fall = (1 => 0);
+        }
+
+    endgroup
+    covergroup aes__CTRL_GCM_SHADOWED_fld_cg with function sample(
+    input bit [6-1:0] PHASE,
+    input bit [5-1:0] NUM_VALID_BYTES
+    );
+        option.per_instance = 1;
+        PHASE_cp : coverpoint PHASE;
+        NUM_VALID_BYTES_cp : coverpoint NUM_VALID_BYTES;
+
+    endgroup
+
     /*----------------------- AES_CLP_REG__AES_NAME COVERGROUPS -----------------------*/
     covergroup aes_clp_reg__AES_NAME_bit_cg with function sample(input bit reg_bit);
         option.per_instance = 1;
@@ -584,258 +836,6 @@
     );
         option.per_instance = 1;
         pulse_cp : coverpoint pulse;
-
-    endgroup
-
-    /*----------------------- AES__KEY_SHARE0 COVERGROUPS -----------------------*/
-    covergroup aes__KEY_SHARE0_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__KEY_SHARE0_fld_cg with function sample(
-    input bit [32-1:0] KEY_SHARE0
-    );
-        option.per_instance = 1;
-        KEY_SHARE0_cp : coverpoint KEY_SHARE0;
-
-    endgroup
-
-    /*----------------------- AES__KEY_SHARE1 COVERGROUPS -----------------------*/
-    covergroup aes__KEY_SHARE1_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__KEY_SHARE1_fld_cg with function sample(
-    input bit [32-1:0] KEY_SHARE1
-    );
-        option.per_instance = 1;
-        KEY_SHARE1_cp : coverpoint KEY_SHARE1;
-
-    endgroup
-
-    /*----------------------- AES__IV COVERGROUPS -----------------------*/
-    covergroup aes__IV_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__IV_fld_cg with function sample(
-    input bit [32-1:0] IV
-    );
-        option.per_instance = 1;
-        IV_cp : coverpoint IV;
-
-    endgroup
-
-    /*----------------------- AES__DATA_IN COVERGROUPS -----------------------*/
-    covergroup aes__DATA_IN_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__DATA_IN_fld_cg with function sample(
-    input bit [32-1:0] DATA_IN
-    );
-        option.per_instance = 1;
-        DATA_IN_cp : coverpoint DATA_IN;
-
-    endgroup
-
-    /*----------------------- AES__DATA_OUT COVERGROUPS -----------------------*/
-    covergroup aes__DATA_OUT_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__DATA_OUT_fld_cg with function sample(
-    input bit [32-1:0] DATA_OUT
-    );
-        option.per_instance = 1;
-        DATA_OUT_cp : coverpoint DATA_OUT;
-
-    endgroup
-
-    /*----------------------- AES__CTRL_SHADOWED COVERGROUPS -----------------------*/
-    covergroup aes__CTRL_SHADOWED_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__CTRL_SHADOWED_fld_cg with function sample(
-    input bit [2-1:0] OPERATION,
-    input bit [6-1:0] MODE,
-    input bit [3-1:0] KEY_LEN,
-    input bit [1-1:0] SIDELOAD,
-    input bit [3-1:0] PRNG_RESEED_RATE,
-    input bit [1-1:0] MANUAL_OPERATION
-    );
-        option.per_instance = 1;
-        OPERATION_cp : coverpoint OPERATION;
-        MODE_cp : coverpoint MODE;
-        KEY_LEN_cp : coverpoint KEY_LEN;
-        SIDELOAD_cp : coverpoint SIDELOAD;
-        PRNG_RESEED_RATE_cp : coverpoint PRNG_RESEED_RATE;
-        MANUAL_OPERATION_cp : coverpoint MANUAL_OPERATION;
-
-    endgroup
-
-    /*----------------------- AES__CTRL_AUX_SHADOWED COVERGROUPS -----------------------*/
-    covergroup aes__CTRL_AUX_SHADOWED_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__CTRL_AUX_SHADOWED_fld_cg with function sample(
-    input bit [1-1:0] KEY_TOUCH_FORCES_RESEED,
-    input bit [1-1:0] FORCE_MASKS
-    );
-        option.per_instance = 1;
-        KEY_TOUCH_FORCES_RESEED_cp : coverpoint KEY_TOUCH_FORCES_RESEED;
-        FORCE_MASKS_cp : coverpoint FORCE_MASKS;
-
-    endgroup
-
-    /*----------------------- AES__CTRL_AUX_REGWEN COVERGROUPS -----------------------*/
-    covergroup aes__CTRL_AUX_REGWEN_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__CTRL_AUX_REGWEN_fld_cg with function sample(
-    input bit [1-1:0] CTRL_AUX_REGWEN
-    );
-        option.per_instance = 1;
-        CTRL_AUX_REGWEN_cp : coverpoint CTRL_AUX_REGWEN;
-
-    endgroup
-
-    /*----------------------- AES__TRIGGER COVERGROUPS -----------------------*/
-    covergroup aes__TRIGGER_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__TRIGGER_fld_cg with function sample(
-    input bit [1-1:0] START,
-    input bit [1-1:0] KEY_IV_DATA_IN_CLEAR,
-    input bit [1-1:0] DATA_OUT_CLEAR,
-    input bit [1-1:0] PRNG_RESEED
-    );
-        option.per_instance = 1;
-        START_cp : coverpoint START;
-        KEY_IV_DATA_IN_CLEAR_cp : coverpoint KEY_IV_DATA_IN_CLEAR;
-        DATA_OUT_CLEAR_cp : coverpoint DATA_OUT_CLEAR;
-        PRNG_RESEED_cp : coverpoint PRNG_RESEED;
-
-    endgroup
-
-    /*----------------------- AES__STATUS COVERGROUPS -----------------------*/
-    covergroup aes__STATUS_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__STATUS_fld_cg with function sample(
-    input bit [1-1:0] IDLE,
-    input bit [1-1:0] STALL,
-    input bit [1-1:0] OUTPUT_LOST,
-    input bit [1-1:0] OUTPUT_VALID,
-    input bit [1-1:0] INPUT_READY,
-    input bit [1-1:0] ALERT_RECOV_CTRL_UPDATE_ERR,
-    input bit [1-1:0] ALERT_FATAL_FAULT
-    );
-        option.per_instance = 1;
-        IDLE_cp : coverpoint IDLE;
-        STALL_cp : coverpoint STALL;
-        OUTPUT_LOST_cp : coverpoint OUTPUT_LOST;
-        OUTPUT_VALID_cp : coverpoint OUTPUT_VALID;
-        INPUT_READY_cp : coverpoint INPUT_READY;
-        ALERT_RECOV_CTRL_UPDATE_ERR_cp : coverpoint ALERT_RECOV_CTRL_UPDATE_ERR;
-        ALERT_FATAL_FAULT_cp : coverpoint ALERT_FATAL_FAULT;
-
-    endgroup
-
-    /*----------------------- AES__CTRL_GCM_SHADOWED COVERGROUPS -----------------------*/
-    covergroup aes__CTRL_GCM_SHADOWED_bit_cg with function sample(input bit reg_bit);
-        option.per_instance = 1;
-        reg_bit_cp : coverpoint reg_bit {
-            bins value[2] = {0,1};
-        }
-        reg_bit_edge_cp : coverpoint reg_bit {
-            bins rise = (0 => 1);
-            bins fall = (1 => 0);
-        }
-
-    endgroup
-    covergroup aes__CTRL_GCM_SHADOWED_fld_cg with function sample(
-    input bit [6-1:0] PHASE,
-    input bit [5-1:0] NUM_VALID_BYTES
-    );
-        option.per_instance = 1;
-        PHASE_cp : coverpoint PHASE;
-        NUM_VALID_BYTES_cp : coverpoint NUM_VALID_BYTES;
 
     endgroup
 

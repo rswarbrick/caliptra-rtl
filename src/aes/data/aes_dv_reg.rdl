@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// DV-only composite address map for block-level UVM RAL generation.
+//
+// This file is NOT used as input to peakrdl-regblock — the synthesisable
+// AES regblock RTL is generated from aes_clp_reg.rdl. Its sole purpose is
+// to give the AES block-level DV testbench a single UVM RAL that contains
+// both the OT AES core CSRs and the Caliptra wrapper CSRs, composed at the
+// same offsets the runtime VH adapter (caliptra_tlul_adapter_vh with
+// VH_REGISTER_ADDRESS_OFFSET = 0x800) routes them to:
+//
+//   0x000..0x7FF  -> OT AES core      (TLUL path out to aes_inst)
+//   0x800..0xFFF  -> Caliptra wrapper (VH "internal" path to aes_clp_reg_inst)
+//
+// Sub-instance naming notes:
+//  * `aes_core`  matches the existing block-level DV testbench's `ral.aes_core.*` paths
+//                (originally inherited from a prior wrapper-only RAL that embedded the
+//                OT core via `external aes aes_core @0x800`).
+//  * `clp_reg`   names the Caliptra wrapper CSR block. Intentionally NOT named
+//                `aes_clp_reg` to avoid the SystemVerilog identifier shadow that would
+//                arise from peakrdl-uvm emitting `rand aes_clp_reg aes_clp_reg;` in the
+//                composite class — type name and variable name must differ.
+// These names form an independent namespace from the SoC-level integration RAL; the
+// block-level RAL does not need to match SoC-level instance names exactly.
+
+`include "aes.rdl"
+`include "aes_clp_reg.rdl"
+
+addrmap aes_dv_reg {
+    desc = "Block-level DV composite map for AES (OT core + Caliptra wrapper).";
+
+    aes         aes_core @ 0x000;
+    aes_clp_reg clp_reg  @ 0x800;
+};

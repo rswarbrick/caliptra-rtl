@@ -6,7 +6,7 @@ import aes_model_dpi_pkg::*;
 import aes_pkg::*;
 
 class aes_scoreboard extends dv_base_scoreboard #(.CFG_T(aes_env_cfg),
-                                                  .RAL_T(aes_clp_reg),
+                                                  .RAL_T(aes_dv_reg),
                                                   .COV_T(aes_env_cov));
 
   `uvm_component_utils(aes_scoreboard)
