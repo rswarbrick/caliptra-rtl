@@ -88,7 +88,7 @@ package aes_dv_reg_uvm;
 
         virtual function void build();
             this.IV = dv_base_reg_field::type_id::create("IV");
-            this.IV.configure(this, 32, 0, "W1C", 1, 'h0, 0, 1, 0);
+            this.IV.configure(this, 32, 0, "RW", 1, 'h0, 0, 1, 0);
             if (has_coverage(UVM_CVR_REG_BITS)) begin
                 foreach(IV_bit_cg[bt]) IV_bit_cg[bt] = new();
             end
@@ -191,17 +191,17 @@ package aes_dv_reg_uvm;
 
         virtual function void build();
             this.OPERATION = dv_base_reg_field::type_id::create("OPERATION");
-            this.OPERATION.configure(this, 2, 0, "W1C", 1, 'h0, 0, 1, 0);
+            this.OPERATION.configure(this, 2, 0, "RW", 1, 'h0, 0, 1, 0);
             this.MODE = dv_base_reg_field::type_id::create("MODE");
-            this.MODE.configure(this, 6, 2, "W1C", 1, 'h0, 0, 1, 0);
+            this.MODE.configure(this, 6, 2, "RW", 1, 'h0, 0, 1, 0);
             this.KEY_LEN = dv_base_reg_field::type_id::create("KEY_LEN");
-            this.KEY_LEN.configure(this, 3, 8, "W1C", 1, 'h0, 0, 1, 0);
+            this.KEY_LEN.configure(this, 3, 8, "RW", 1, 'h0, 0, 1, 0);
             this.SIDELOAD = dv_base_reg_field::type_id::create("SIDELOAD");
-            this.SIDELOAD.configure(this, 1, 11, "W1C", 1, 'h0, 0, 1, 0);
+            this.SIDELOAD.configure(this, 1, 11, "RW", 1, 'h0, 0, 1, 0);
             this.PRNG_RESEED_RATE = dv_base_reg_field::type_id::create("PRNG_RESEED_RATE");
-            this.PRNG_RESEED_RATE.configure(this, 3, 12, "W1C", 1, 'h0, 0, 1, 0);
+            this.PRNG_RESEED_RATE.configure(this, 3, 12, "RW", 1, 'h0, 0, 1, 0);
             this.MANUAL_OPERATION = dv_base_reg_field::type_id::create("MANUAL_OPERATION");
-            this.MANUAL_OPERATION.configure(this, 1, 15, "W1C", 1, 'h0, 0, 1, 0);
+            this.MANUAL_OPERATION.configure(this, 1, 15, "RW", 1, 'h0, 0, 1, 0);
             if (has_coverage(UVM_CVR_REG_BITS)) begin
                 foreach(OPERATION_bit_cg[bt]) OPERATION_bit_cg[bt] = new();
                 foreach(MODE_bit_cg[bt]) MODE_bit_cg[bt] = new();
@@ -239,9 +239,9 @@ package aes_dv_reg_uvm;
 
         virtual function void build();
             this.KEY_TOUCH_FORCES_RESEED = dv_base_reg_field::type_id::create("KEY_TOUCH_FORCES_RESEED");
-            this.KEY_TOUCH_FORCES_RESEED.configure(this, 1, 0, "W1C", 1, 'h0, 0, 1, 0);
+            this.KEY_TOUCH_FORCES_RESEED.configure(this, 1, 0, "RW", 1, 'h0, 0, 1, 0);
             this.FORCE_MASKS = dv_base_reg_field::type_id::create("FORCE_MASKS");
-            this.FORCE_MASKS.configure(this, 1, 1, "W1C", 1, 'h0, 0, 1, 0);
+            this.FORCE_MASKS.configure(this, 1, 1, "RW", 1, 'h0, 0, 1, 0);
             if (has_coverage(UVM_CVR_REG_BITS)) begin
                 foreach(KEY_TOUCH_FORCES_RESEED_bit_cg[bt]) KEY_TOUCH_FORCES_RESEED_bit_cg[bt] = new();
                 foreach(FORCE_MASKS_bit_cg[bt]) FORCE_MASKS_bit_cg[bt] = new();
@@ -413,9 +413,9 @@ package aes_dv_reg_uvm;
 
         virtual function void build();
             this.PHASE = dv_base_reg_field::type_id::create("PHASE");
-            this.PHASE.configure(this, 6, 0, "W1C", 1, 'h0, 0, 1, 0);
+            this.PHASE.configure(this, 6, 0, "RW", 1, 'h0, 0, 1, 0);
             this.NUM_VALID_BYTES = dv_base_reg_field::type_id::create("NUM_VALID_BYTES");
-            this.NUM_VALID_BYTES.configure(this, 5, 6, "W1C", 1, 'h0, 0, 1, 0);
+            this.NUM_VALID_BYTES.configure(this, 5, 6, "RW", 1, 'h0, 0, 1, 0);
             if (has_coverage(UVM_CVR_REG_BITS)) begin
                 foreach(PHASE_bit_cg[bt]) PHASE_bit_cg[bt] = new();
                 foreach(NUM_VALID_BYTES_bit_cg[bt]) NUM_VALID_BYTES_bit_cg[bt] = new();
