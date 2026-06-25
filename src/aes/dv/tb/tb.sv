@@ -115,6 +115,10 @@ module tb;
     uvm_config_db#(virtual aes_cov_if)::set(   null, "*.env", "aes_cov_if",     dut.aes_inst.u_aes_cov_if);
     uvm_config_db#(virtual aes_reseed_if)::set(null, "*.env", "aes_reseed_vif", dut.aes_inst.u_aes_reseed_if);
 
+    // Tell the environment the HDL path to the aes_clp_wrapper. This will allow it to construct an
+    // HDL path for back-door accesses in the generated reg_block.
+    uvm_config_db#(string)::set(null, "*.env", "hdl_path", "tb.dut");
+
     $timeformat(-12, 0, " ps", 12);
     run_test();
   end

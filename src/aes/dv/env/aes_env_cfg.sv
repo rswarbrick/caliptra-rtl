@@ -337,7 +337,51 @@ class aes_env_cfg extends dv_base_env_cfg #(.RAL_T(aes_dv_reg));
                    `UVM_REG_DATA_WIDTH,
                    `UVM_REG_BYTENABLE_WIDTH);
 
+    // Add HDL paths for the non-ext registers, relative to the aes_core register block's root.
+    foreach (ral.aes_core.DATA_IN[i]) begin
+      ral.aes_core.DATA_IN[i].add_hdl_path_slice($sformatf("u_data_in_%0d.q", i), 0, 32);
+    end
+
+    foreach (ral.aes_core.DATA_OUT[i]) begin
+      ral.aes_core.DATA_OUT[i].add_hdl_path_slice($sformatf("u_data_out_%0d.q", i), 0, 32);
+    end
+
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_operation.q",         0, 2);
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_mode.q",              2, 6);
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_key_len.q",           8, 3);
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_sideload.q",         11, 1);
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_prng_reseed_rate.q", 12, 3);
+    ral.aes_core.CTRL_SHADOWED.add_hdl_path_slice("u_ctrl_shadowed_manual_operation.q", 15, 1);
+
+    ral.aes_core.CTRL_AUX_SHADOWED.add_hdl_path_slice(
+      "u_ctrl_aux_shadowed_key_touch_forces_reseed.q", 0, 1
+    );
+    ral.aes_core.CTRL_AUX_SHADOWED.add_hdl_path_slice("u_ctrl_aux_shadowed_force_masks.q", 1, 1);
+
+    ral.aes_core.CTRL_AUX_REGWEN.add_hdl_path_slice("u_ctrl_aux_regwen.q", 0, 1);
+
+    ral.aes_core.TRIGGER.add_hdl_path_slice("u_trigger_start.q",                0, 1);
+    ral.aes_core.TRIGGER.add_hdl_path_slice("u_trigger_key_iv_data_in_clear.q", 1, 1);
+    ral.aes_core.TRIGGER.add_hdl_path_slice("u_trigger_data_out_clear.q",       2, 1);
+    ral.aes_core.TRIGGER.add_hdl_path_slice("u_trigger_prng_reseed.q",          3, 1);
+
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_idle.q",                        0, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_stall.q",                       1, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_output_lost.q",                 2, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_output_valid.q",                3, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_input_ready.q",                 4, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_alert_recov_ctrl_update_err.q", 5, 1);
+    ral.aes_core.STATUS.add_hdl_path_slice("u_status_alert_fatal_fault.q",           6, 1);
+
+    ral.aes_core.CTRL_GCM_SHADOWED.add_hdl_path_slice("u_ctrl_gcm_shadowed_phase.q", 0, 6);
+    ral.aes_core.CTRL_GCM_SHADOWED.add_hdl_path_slice("u_ctrl_gcm_shadowed_num_valid_bytes.q",
+                                                      6, 5);
+
     get_config_db_handles();
   endfunction
 
+  // Provide the HDL path for aes_clp_wrapper
+  function void set_hdl_path(string hdl_path);
+    ral.aes_core.set_hdl_path_root({hdl_path, ".aes_inst.u_reg"});
+  endfunction
 endclass
