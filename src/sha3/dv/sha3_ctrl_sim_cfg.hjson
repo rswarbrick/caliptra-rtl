@@ -1,0 +1,150 @@
+// Copyright lowRISC contributors (OpenTitan project).
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+{
+  // The `name` field that provides the name of the sim_cfg
+  name: sha3_ctrl
+
+  // Top level dut name
+  dut: sha3_ctrl
+
+  // Top level testbench name (sv module).
+  tb: tb
+
+  // Simulator used to sign off this block
+  tool: xcelium
+
+  // Fusesoc core file used for building the file list.
+  fusesoc_core: lowrisc:dv:sha3_ctrl_sim:0.1
+
+  // Testplan hjson file
+  testplan: "{proj_root}/src/sha3/data/sha3_ctrl_testplan.hjson"
+
+  // Import additional common sim cfg files.
+  import_cfgs: ["{proj_root}/tools/dvsim/common_sim_cfg.hjson",
+                "{proj_root}/tools/dvsim/tests/csr_tests.hjson",
+                "{proj_root}/tools/dvsim/tests/intr_test.hjson"]
+
+  // Add additional tops for simulation.
+  sim_tops: ["kmac_cov_bind"]
+
+  // Default iterations for all tests - each test entry can override this.
+  reseed: 20
+
+  run_opts: ["+test_timeout_ns=4_000_000_000"]
+
+  // Need to override the default output directory
+  overrides: [
+    {
+      name: scratch_path
+      value: "{scratch_base_path}/{name}_{flow}-{tool}"
+    }
+    {
+      name: rel_path
+      value: "hw/ip/{name}/dv"
+    }
+  ]
+
+  // Some of the DV code for sha3_ctrl comes from OpenTitan's kmac block, which supports masking.
+  // Since sha3_ctrl does not use this feature, use +define+ to tell it that we are in an unmasked
+  // context.
+  build_opts: ["+define+EN_MASKING=0", "+define+SW_KEY_MASKED=0"]
+
+  // Disable masking with runtime plusargs. Also enable cdc instrumentation in any
+  // caliptra_prim_flop_2sync modules.
+  run_opts: ["+enable_masking=0", "+sw_key_masked=0", "+cdc_instrumentation_enabled=1"]
+
+  // Default UVM test and seq class name.
+  uvm_test: sha3_ctrl_base_test
+  uvm_test_seq: sha3_ctrl_base_vseq
+
+  // List of test specifications.
+  tests: [
+    {
+      name: "{name}_smoke"
+      uvm_test_seq: sha3_ctrl_smoke_vseq
+    }
+    {
+      name: "{name}_long_msg_and_output"
+      uvm_test_seq: sha3_ctrl_long_msg_and_output_vseq
+      run_opts: ["+test_timeout_ns=10_000_000_000"]
+      run_timeout_mins: 120
+    }
+    {
+      name: "{name}_burst_write"
+      uvm_test_seq: sha3_ctrl_burst_write_vseq
+      run_opts: ["+test_timeout_ns=500_000_000"]
+    }
+    {
+      name: "{name}_test_vectors_sha3_224"
+      uvm_test_seq: sha3_ctrl_test_vectors_sha3_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_sha3_variant=224"]
+      run_timeout_mins: 90
+      reseed: 5
+    }
+    {
+      name: "{name}_test_vectors_sha3_256"
+      uvm_test_seq: sha3_ctrl_test_vectors_sha3_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_sha3_variant=256"]
+      run_timeout_mins: 90
+      reseed: 5
+    }
+    {
+      name: "{name}_test_vectors_sha3_384"
+      uvm_test_seq: sha3_ctrl_test_vectors_sha3_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_sha3_variant=384"]
+      reseed: 5
+    }
+    {
+      name: "{name}_test_vectors_sha3_512"
+      uvm_test_seq: sha3_ctrl_test_vectors_sha3_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_sha3_variant=512"]
+      reseed: 5
+    }
+    {
+      name: "{name}_test_vectors_shake_128"
+      uvm_test_seq: sha3_ctrl_test_vectors_shake_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_shake_variant=128"]
+      run_timeout_mins: 90
+      reseed: 5
+    }
+    {
+      name: "{name}_test_vectors_shake_256"
+      uvm_test_seq: sha3_ctrl_test_vectors_shake_vseq
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0",
+                 "+test_timeout_ns=5_000_000_000",
+                 "+test_vectors_shake_variant=256"]
+      run_timeout_mins: 90
+      reseed: 5
+    }
+    {
+      name: sha3_ctrl_stress_all
+      uvm_test_seq: sha3_ctrl_stress_all_vseq
+      run_opts: ["+test_timeout_ns=10_000_000_000",
+                 "+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0"]
+    }
+    {
+      name: sha3_ctrl_stress_all_with_rand_reset
+      run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0"]
+      reseed: 10
+    }
+  ]
+
+  // List of regressions.
+  regressions: [
+    {
+      name: smoke
+      tests: ["{name}_smoke"]
+    }
+  ]
+}
