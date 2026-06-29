@@ -18,6 +18,9 @@ class sha3_ctrl_env extends dv_base_env #(
   endfunction
 
   function void build_phase(uvm_phase phase);
+    // The HDL path to sha3_ctrl (supplied through the config db)
+    string hdl_path;
+
     super.build_phase(phase);
 
     if (!uvm_config_db#(virtual ahb_if)::get(this, "", "ahb_vif", cfg.m_ahb_vif)) begin
@@ -37,6 +40,13 @@ class sha3_ctrl_env extends dv_base_env #(
 
     uvm_config_db#(virtual ahb_if)::set(this, "m_ahb_mgr_agent*", "vif", cfg.m_ahb_vif);
     m_ahb_mgr_agent = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
+
+    // Get the path to the module instance and pass it to our config object (allowing the config
+    // object to make HDL paths to its registers)
+    if (!uvm_config_db#(string)::get(this, "", "hdl_path", hdl_path)) begin
+      `uvm_fatal(get_full_name(), "Failed to get hdl_path from uvm_config_db.")
+    end
+    cfg.set_hdl_path(hdl_path);
   endfunction
 
   function void connect_phase(uvm_phase phase);
