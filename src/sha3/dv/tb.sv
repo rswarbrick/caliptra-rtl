@@ -79,6 +79,10 @@ module tb;
     // with index 0.
     uvm_config_db#(int unsigned)::set(null, "*.env", "ahb_subordinate_index", 0);
 
+    // Tell the environment the HDL path to the sha3_ctrl instance. This will allow it to construct
+    // HDL paths for back-door accesses in the generated reg_block.
+    uvm_config_db#(string)::set(null, "*.env", "hdl_path", "tb.dut");
+
     $timeformat(-12, 0, " ps", 12);
     run_test();
   end

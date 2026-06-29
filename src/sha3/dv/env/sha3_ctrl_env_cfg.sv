@@ -59,6 +59,75 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
     initialize_ral(`UVM_REG_ADDR_WIDTH,
                    `UVM_REG_DATA_WIDTH,
                    `UVM_REG_BYTENABLE_WIDTH);
+
+    ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_kmac_done.q",  0, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_fifo_empty.q", 1, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_kmac_err.q",   2, 1, BkdrRegPathRtl);
+
+    ral.kmac_core.INTR_ENABLE.add_path_slice("u_intr_enable_kmac_done.q",  0, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_ENABLE.add_path_slice("u_intr_enable_fifo_empty.q", 1, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_ENABLE.add_path_slice("u_intr_enable_kmac_err.q",   2, 1, BkdrRegPathRtl);
+
+    ral.kmac_core.INTR_TEST.add_path_slice("u_intr_test_kmac_done.q",  0, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_TEST.add_path_slice("u_intr_test_fifo_empty.q", 1, 1, BkdrRegPathRtl);
+    ral.kmac_core.INTR_TEST.add_path_slice("u_intr_test_kmac_err.q",   2, 1, BkdrRegPathRtl);
+
+    // Note: Not connecting up ALERT_TEST, on the basis that Caliptra doesn't use the OpenTitan
+    //       alert mechanism and it's probably more helpful to get an error than have the sequence
+    //       do nothing.
+
+    ral.kmac_core.CFG_REGWEN.add_path_slice("u_cfg_regwen.qs", 0, 1, BkdrRegPathRtl);
+
+    ral.kmac_core.CFG_SHADOWED.add_prim_subreg_shadow_slices("u_cfg_shadowed_kstrength",
+                                                             1, 3);
+    ral.kmac_core.CFG_SHADOWED.add_prim_subreg_shadow_slices("u_cfg_shadowed_mode",
+                                                             4, 2);
+    ral.kmac_core.CFG_SHADOWED.add_prim_subreg_shadow_slices("u_cfg_shadowed_msg_endianness",
+                                                             8, 1);
+    ral.kmac_core.CFG_SHADOWED.add_prim_subreg_shadow_slices("u_cfg_shadowed_state_endianness",
+                                                             9, 1);
+
+    ral.kmac_core.CMD.add_path_slice("u_cmd_cmd.qs", 0, 6, BkdrRegPathRtl);
+    ral.kmac_core.CMD.add_path_slice("u_cmd_err_processed.qs", 10, 1, BkdrRegPathRtl);
+
+    ral.kmac_core.STATUS.add_path_slice("u_status_sha3_idle.qs",         0,  1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_sha3_absorb.qs",       1,  1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_sha3_squeeze.qs",      2,  1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_fifo_depth.qs",        8,  5, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_fifo_empty.qs",        14, 1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_fifo_full.qs",         15, 1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_alert_fatal_fault.qs", 16, 1, BkdrRegPathRtl);
+    ral.kmac_core.STATUS.add_path_slice("u_status_alert_recov_ctrl_update_err.qs",
+                                        17, 1, BkdrRegPathRtl);
+
+    for (int unsigned idx = 0; idx < 11; idx++) begin
+      string      reg_name = $sformatf("PREFIX_%0d", idx);
+      uvm_reg     pfx_reg = ral.kmac_core.get_reg_by_name(reg_name);
+      dv_base_reg dv_pfx_reg;
+
+      if (pfx_reg == null) begin
+        `uvm_fatal(get_full_name(), $sformatf("Cannot get prefix register %0s.", reg_name))
+      end
+      if (!$cast(dv_pfx_reg, pfx_reg)) begin
+        `uvm_fatal(get_full_name(), $sformatf("Cannot consider register %0s as a dv_base_reg.",
+                                              reg_name))
+      end
+
+      dv_pfx_reg.add_path_slice($sformatf("u_prefix_%0d.q", idx), 0, 32, BkdrRegPathRtl);
+    end
+
+    ral.kmac_core.ERR_CODE.add_path_slice("u_err_code.q", 0, 32, BkdrRegPathRtl);
+  endfunction
+
+  // Provide the HDL path for the sha3_ctrl instance.
+  function void set_hdl_path(string hdl_path);
+    bkdr_reg_path_e std_kind = BkdrRegPathRtl;
+    bkdr_reg_path_e shadow_kind = BkdrRegPathRtlShadow;
+
+    ral.kmac_core.set_hdl_path_root({hdl_path, ".u_sha_inst.u_reg"}, std_kind.name());
+    ral.kmac_core.set_hdl_path_root({hdl_path, ".u_sha_inst.u_reg"}, shadow_kind.name());
+
+    ral.kmac_core.set_default_hdl_path(std_kind.name());
   endfunction
 
 endclass
