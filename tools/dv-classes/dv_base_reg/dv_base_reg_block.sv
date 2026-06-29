@@ -286,6 +286,49 @@ class dv_base_reg_block extends uvm_reg_block;
     `uvm_info(`gfn, $sformatf("mem_ranges: %0p", mem_ranges), UVM_HIGH)
   endfunction
 
+  // Sort the given list of addr_range_t ranges by start address and merge adjacent ranges
+  local function void sort_and_squash_addr_ranges(ref addr_range_t ranges[$]);
+    addr_range_t sorted[$];
+    bit          have_working_range;
+    addr_range_t working_range;
+
+    // Take a shallow copy of ranges (which will let us clear that and use it as an output)
+    sorted = ranges;
+    sorted.sort(m) with (m.start_addr);
+
+    // Now clear ranges: we'll build it with items from sorted in the loop below.
+    ranges.delete();
+
+    foreach (sorted[i]) begin
+      if (!have_working_range) begin
+        working_range = sorted[i];
+        have_working_range = 1;
+      end else begin
+        // Because we sorted the input list, working_range.start_addr <= sorted[i].start_addr. The
+        // two ranges should be merged if there are no addresses strictly between them. That is, if
+        // working_range.end_addr + 1 >= sorted[i].start_addr.
+        if (working_range.end_addr + 1 >= sorted[i].start_addr) begin
+          // If we are merging the two ranges, take the larger of the two end addresses. This will
+          // probably always be sorted[i].end_addr, but there's no harm in being robust.
+          if (sorted[i].end_addr > working_range.end_addr) begin
+            working_range.end_addr = sorted[i].end_addr;
+          end
+        end else begin
+          // There was a gap between the two ranges. Add working_range to ranges, then set the
+          // "current working range" to be sorted[i].
+          ranges.push_back(working_range);
+          working_range = sorted[i];
+        end
+      end
+    end
+
+    // At this point, we've run through the whole list. If it was nonempty, there will be something
+    // in working_range and that should be added to the end of ranges.
+    if (have_working_range) begin
+      ranges.push_back(working_range);
+    end
+  endfunction
+
   // Compute CSR addresses, memory address ranges, and the list of all address ranges used by either
   // memories or registers.
   //
@@ -309,8 +352,7 @@ class dv_base_reg_block extends uvm_reg_block;
     // Now append the ranges from memories
     mapped_addr_ranges = {mapped_addr_ranges, mem_ranges};
 
-    // Sort the mapped address ranges in ascending order based on the start_addr of each range
-    mapped_addr_ranges.sort(m) with (m.start_addr);
+    sort_and_squash_addr_ranges(mapped_addr_ranges);
 
     `uvm_info(`gfn, $sformatf("mapped_addr_ranges: %0p", mapped_addr_ranges), UVM_HIGH)
   endfunction
