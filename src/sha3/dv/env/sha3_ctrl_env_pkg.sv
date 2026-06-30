@@ -17,6 +17,7 @@ package sha3_ctrl_env_pkg;
   import keymgr_pkg::*;
 
   import ahb_agent_pkg::ahb_mgr_agent;
+  import ahb_agent_pkg::ahb_txn_request_item;
   import ahb_agent_pkg::ahb_txn_item;
   import ahb_agent_pkg::ahb_txn_response_item;
   import ahb_agent_pkg::ahb_mgr_reg_adapter;
@@ -192,6 +193,12 @@ package sha3_ctrl_env_pkg;
   function automatic int get_key_size_blocks(kmac_pkg::key_len_e len);
     return (get_key_size_words(len) / 2);
   endfunction
+
+  // An import that will be used for AHB request items
+  `uvm_analysis_imp_decl(_ahb_req)
+
+  // An import that will be used for AHB transaction items (generated at the end of a transaction)
+  `uvm_analysis_imp_decl(_ahb_txn)
 
   // package sources
   `include "sha3_ctrl_env_cfg.sv"

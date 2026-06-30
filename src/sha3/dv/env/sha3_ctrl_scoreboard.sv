@@ -9,7 +9,22 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   );
   `uvm_component_utils(sha3_ctrl_scoreboard)
 
-  // local variables
+  // An import for AHB requests. There will be one for each AHB transaction. It appears at the start
+  // of a transaction. Together with m_ahb_txn_imp, this lets us see the "period where the
+  // transaction is in flight".
+  uvm_analysis_imp_ahb_req #(ahb_txn_request_item, sha3_ctrl_scoreboard) m_ahb_req_imp;
+
+  // An import for AHB transactions. Some will be handled by the register predictor, but this
+  // explicit import is needed as well, to allow us to track access to the STATE memory and
+  // MSG_FIFO.
+  uvm_analysis_imp_ahb_txn #(ahb_txn_item, sha3_ctrl_scoreboard) m_ahb_txn_imp;
+
+  // A counter of the number of requests that have been seen in m_ahb_req_imp since the last reset
+  local int unsigned m_ahb_req_counter;
+
+  // A counter of the number of transactions that have been seen in m_ahb_txn_imp since the last
+  // reset. This will always be <= m_req_counter.
+  local int unsigned m_ahb_txn_counter;
 
   bit do_check_digest = 1;
 
@@ -61,11 +76,21 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
   // FIFO status bits
   bit cmd_process_triggered;
-  bit msgfifo_access;
   bit fifo_empty_status;
   bit fifo_full_status;
   bit fifo_full_detected;
   bit intr_fifo_empty_allowed;
+
+  // A flag that shows a transaction is writing to MSG_FIFO. This is set in write_ahb_req when it
+  // sees a request to write in the fifo. At the same time, we set msgfifo_txn_idx. When there is a
+  // write to m_ahb_txn_imp with m_ahb_txn_counter equal to msgfifo_txn_idx, we will clear the flag
+  // again.
+  local bit msgfifo_access;
+
+  // The value of m_ahb_req_counter when we last saw a request to write MSG_FIFO, setting
+  // msgfifo_access. The flag should be cleared again once m_ahb_txn_counter gets incremented past
+  // this number.
+  local int unsigned msgfifo_txn_idx;
 
   bit intr_kmac_done;
   bit intr_fifo_empty;
@@ -125,7 +150,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
                             (1'b1 << KmacStatusFifoEmpty) |
                             ({KMAC_FIFO_DEPTH{1'b1}} << KmacStatusFifoDepthLSB);
 
-  `uvm_component_new
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    m_ahb_req_imp = new("m_ahb_req_imp", this);
+    m_ahb_txn_imp = new("m_ahb_txn_imp", this);
+  endfunction
 
   task run_phase(uvm_phase phase);
     super.run_phase(phase);
@@ -172,6 +201,82 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
       )
     end
   endtask
+
+  // Return true if this is a bus write with an address that overlaps with MSG_FIFO.
+  local function bit is_write_to_msg_fifo(ahb_txn_request_item bus_req);
+    uvm_mem        msg_fifo       = ral.kmac_core.MSG_FIFO.m_mem;
+    uvm_reg_addr_t msg_fifo_start = msg_fifo.get_address();
+    int unsigned   msg_fifo_size  = msg_fifo.get_size() * msg_fifo.get_n_bytes();
+
+    // An access touches MSG_FIFO if the bottom address is below the top of the region and the top
+    // address is above the start of the region. Here, msg_fifo_start + msg_fifo_size is the address
+    // of the first byte above the fifo and bus_req.m_addr + (1 << bus_req.m_size) - 1 is the last
+    // byte of the access.
+    return (bus_req.m_write &&
+            bus_req.m_addr < msg_fifo_start + msg_fifo_size &&
+            msg_fifo_start <= bus_req.m_addr + (1 << bus_req.m_size) - 1);
+  endfunction
+
+  // The write function for m_ahb_req_imp, which is called for every bus request reported by the
+  // monitor in the AHB agent.
+  function void write_ahb_req(ahb_txn_request_item bus_req);
+    // Clear a flag that tracks access to MSG_FIFO (for more details, see the code that might set it
+    // further below in this function)
+    msgfifo_access = 1'b0;
+
+    // Consider just requests where m_trans is TransSequential or TransNonSequential (not idle or
+    // busy).
+    if (bus_req.m_trans inside {ahb_agent_pkg::TransSequential,
+                                ahb_agent_pkg::TransNonSequential}) begin
+      // Keep track of the start of transactions that write to MSG_FIFO. When we see one, we set
+      // msgfifo_access here, which will be cleared again by this line at the start of the next
+      // transaction, or when this transaction gets a result (in write_ahb_txn).
+      //
+      // An access touches MSG_FIFO if the bottom address is below the top of the region and the top
+      // address is above the start of the region.
+      if (is_write_to_msg_fifo(bus_req)) begin
+        msgfifo_access = 1'b1;
+        msgfifo_txn_idx = m_ahb_req_counter;
+      end
+    end
+
+    // Increment the number of requests that have been seen
+    m_ahb_req_counter++;
+  endfunction
+
+  // The write function for m_ahb_txn_imp, which is called for every bus transaction reported by the
+  // monitor in the AHB agent.
+  function void write_ahb_txn(ahb_txn_item bus_txn);
+    // If m_ahb_txn_counter is at least msgfifo_txn_idx, we have seen the end of the last bus
+    // transaction that wrote to MSG_FIFO. Clear msgfifo_access.
+    if (m_ahb_txn_counter >= msgfifo_txn_idx) msgfifo_access = 0;
+
+    // Consider just transactions that ran to completion and didn't get an error response. Only
+    // consider them if the request had m_trans equal to TransSequential or TransNonSequential (not
+    // idle or busy).
+    if (bus_txn.m_response != null &&
+        !bus_txn.m_response.m_resp &&
+        bus_txn.m_request.m_trans inside {ahb_agent_pkg::TransSequential,
+                                          ahb_agent_pkg::TransNonSequential}) begin
+
+      // Was this transaction a write to MSG_FIFO? If so, we should track some associated functional
+      // coverage and set msg (a class variable that tracks the input message)
+      if (is_write_to_msg_fifo(bus_txn.m_request)) begin
+
+        // Add the data from this request by appending the bytes to the queue in msg.
+        int unsigned num_bytes = (1 << bus_txn.m_request.m_size);
+        bit big_endian         = ral.kmac_core.CFG_SHADOWED.msg_endianness.get_mirrored_value();
+
+        for (int unsigned i = 0; i < num_bytes; i++) begin
+          int unsigned pick_idx = big_endian ? num_bytes - 1 - i : i;
+          msg.push_back(bus_txn.m_request.m_wdata[(8 * pick_idx) +: 8]);
+        end
+      end
+    end
+
+    // Increment the number of transactions that have been seen
+    m_ahb_txn_counter++;
+  endfunction
 
   // Triggers the predict_fifo_empty_intr task only when necessary: on particular events or at each
   // clock cycles on particular occasions when signals need to be updated as accurately as possible
@@ -351,6 +456,13 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     fifo_empty_status = ral.kmac_core.STATUS.fifo_empty.get_reset();
     fifo_full_status  = ral.kmac_core.STATUS.fifo_full.get_reset();
     intr_fifo_empty   = ral.kmac_core.INTR_STATE.FIFO_EMPTY.get_reset();
+
+    // Zero the request and transaction counters
+    m_ahb_req_counter = 0;
+    m_ahb_txn_counter = 0;
+
+    // Clear the msgfifo_access flag (there's nothing currently accessing MSG_FIFO)
+    msgfifo_access = 0;
   endfunction
 
   // This function should be called to reset internal state to prepare for a new hash operation
