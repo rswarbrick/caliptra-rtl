@@ -13,6 +13,9 @@ class sha3_ctrl_env extends dv_base_env #(
   // Agent to access the AHB interface
   local ahb_mgr_agent m_ahb_mgr_agent;
 
+  // A reg_predictor that will be connected to the register model in cfg
+  local uvm_reg_predictor #(ahb_txn_item) m_reg_predictor;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
@@ -41,6 +44,10 @@ class sha3_ctrl_env extends dv_base_env #(
     uvm_config_db#(virtual ahb_if)::set(this, "m_ahb_mgr_agent*", "vif", cfg.m_ahb_vif);
     m_ahb_mgr_agent = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
 
+    m_reg_predictor = uvm_reg_predictor#(ahb_txn_item)::type_id::create("m_reg_predictor", this);
+    m_reg_predictor.adapter = ahb_mgr_reg_adapter::type_id::create("adapter");
+    m_reg_predictor.map = cfg.ral.default_map;
+
     // Get the path to the module instance and pass it to our config object (allowing the config
     // object to make HDL paths to its registers)
     if (!uvm_config_db#(string)::get(this, "", "hdl_path", hdl_path)) begin
@@ -67,9 +74,8 @@ class sha3_ctrl_env extends dv_base_env #(
       m_ahb_mgr_agent.register_subordinate_for_map(maps[i], cfg.m_subordinate_idx);
     end
 
-    // TODO(caliptra-port): when an AHB monitor / analysis port is added to ahb_mgr_agent, hook it
-    // up to the scoreboard here. The OpenTitan TL flow split traffic into a/d channel FIFOs;
-    // AES only needs one AHB bus.
+    m_ahb_mgr_agent.m_transaction_port.connect(m_reg_predictor.bus_in);
+
   endfunction
 
   function ahb_mgr_agent get_ahb_mgr_agent();
