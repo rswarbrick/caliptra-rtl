@@ -141,5 +141,6 @@ package dv_base_reg_pkg;
   `include "dv_base_mem.sv"
   `include "dv_base_reg_block.sv"
   `include "dv_base_reg_map.sv"
+  `include "dv_base_fld_change_cb.sv"
 
 endpackage
