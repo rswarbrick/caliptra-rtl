@@ -26,6 +26,14 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // reset. This will always be <= m_req_counter.
   local int unsigned m_ahb_txn_counter;
 
+  // A callback that is installed on the CFG_SHADOWED register and has an event that triggers
+  // whenever a prediction changes the value of some field in the register.
+  //
+  // Note that there are several fields in the register, so a register write may trigger the event
+  // several times. This may or may not cause calls to wait_trigger() to finish multiple times: it
+  // depends on the scheduling in the EDA tool.
+  local dv_base_fld_change_cb cfg_change_cb;
+
   bit do_check_digest = 1;
 
   // used solely for coverage sampling, indicates that keccak rounds are currently running
@@ -151,12 +159,31 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     m_ahb_txn_imp = new("m_ahb_txn_imp", this);
   endfunction
 
+  function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    cfg_change_cb = dv_base_fld_change_cb::type_id::create("cfg_change_cb");
+  endfunction
+
+  function void start_of_simulation_phase(uvm_phase phase);
+    uvm_reg_field cfg_fields[$];
+
+    super.start_of_simulation_phase(phase);
+
+    // Register a callback for each field of CFG_SHADOWED. Doing so for just the register doesn't
+    // work: we want to hang from post_predict, which only gets called for the fields.
+    ral.kmac_core.CFG_SHADOWED.get_fields(cfg_fields);
+    foreach (cfg_fields[i]) begin
+      uvm_callbacks#(uvm_reg_field, uvm_reg_cbs)::add(cfg_fields[i], cfg_change_cb);
+    end
+  endfunction
+
   task run_phase(uvm_phase phase);
     super.run_phase(phase);
     if (cfg.en_scb) begin
       fork
         process_checked_kmac_cmd();
         manage_fifo_empty_intr();
+        track_cfg_changes();
       join_none
     end
   endtask
@@ -410,6 +437,33 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     end
   endtask : manage_fifo_empty_intr
 
+  // Watch the event in cfg_change_cb, which will be triggered whenever the predicted value of the
+  // field changes.
+  task track_cfg_changes();
+    import sha3_pkg::sha3_mode_e;
+    import sha3_pkg::keccak_strength_e;
+
+    forever begin
+      cfg_change_cb.m_event.wait_trigger();
+
+      // We have just seen a change to the CFG_SHADOWED register. Of course, that might have changed
+      // several fields and we only want to reason about the result after all of the predictions
+      // have been updated.
+      //
+      // As such, we cheat here and use #0 to wait until the next region of the time slot. All of
+      // the field predictions will happen in the same region, so this will ensure we only see one
+      // event (after all the predictions have been updated).
+      #0;
+
+      // If sha3_idle is false, the engine is already running something. Don't update the
+      // configuration that is mirrored into the scoreboard.
+      if (!sha3_idle) continue;
+
+      hash_mode = sha3_mode_e'(ral.kmac_core.CFG_SHADOWED.mode.get_mirrored_value());
+      strength = keccak_strength_e'(ral.kmac_core.CFG_SHADOWED.kstrength.get_mirrored_value());
+    end
+  endtask
+
   // Do a backdoor read of the STATUS register and use the result set set the fifo_empty and
   // fifo_full output arguments.
   task backdoor_read_fifo_status(output bit fifo_empty, output bit fifo_full);
@@ -542,6 +596,9 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   endfunction
 
   virtual function void reset(string kind = "HARD");
+    import sha3_pkg::sha3_mode_e;
+    import sha3_pkg::keccak_strength_e;
+
     super.reset(kind);
 
     clear_state();
@@ -557,6 +614,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     sha3_squeeze      = ral.kmac_core.STATUS.sha3_squeeze.get_reset();
     fifo_empty_status = ral.kmac_core.STATUS.fifo_empty.get_reset();
     fifo_full_status  = ral.kmac_core.STATUS.fifo_full.get_reset();
+
+    // Reset fields tracked in CFG_SHADOWED.
+    hash_mode = sha3_mode_e'(ral.kmac_core.CFG_SHADOWED.mode.get_reset());
+    strength  = keccak_strength_e'(ral.kmac_core.CFG_SHADOWED.kstrength.get_reset());
 
     // Zero the request and transaction counters
     m_ahb_req_counter = 0;
