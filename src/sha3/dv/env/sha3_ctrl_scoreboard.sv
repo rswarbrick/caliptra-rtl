@@ -92,9 +92,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // this number.
   local int unsigned msgfifo_txn_idx;
 
-  bit intr_kmac_done;
-  bit intr_kmac_err;
-
   // Error tracking
   kmac_pkg::err_t kmac_err = '{valid: 1'b0,
                                code: kmac_pkg::ErrNone,
@@ -491,8 +488,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
   virtual function void predict_err(bit is_sha3_err = 0, bit is_kmac_err = 0);
     // set interrupt
-    if (!intr_kmac_err) intr_kmac_err = 1;
-    `uvm_info(`gfn, "raised intr_kmac_err", UVM_HIGH)
     if (is_sha3_err) `uvm_info(`gfn, $sformatf("sha3_err: %0p", sha3_err), UVM_HIGH)
     if (is_kmac_err) `uvm_info(`gfn, $sformatf("kmac_err: %0p", kmac_err), UVM_HIGH)
 
