@@ -35,6 +35,8 @@ module tb;
   wire busy;
 
   sha3_intr_if intr_if(.clk_i(clk), .rst_ni(rst_n));
+  kmac_intr_if kmac_intr_if();
+
   pins_if #(.Width(1)) busy_if(busy);
 
   sha3_ctrl #(
@@ -67,12 +69,17 @@ module tb;
     .debugUnlock_or_scan_mode_switch ( 1'b0                     )
   );
 
+  assign kmac_intr_if.kmac_done  = dut.u_sha_inst.intr_kmac_done_o;
+  assign kmac_intr_if.fifo_empty = dut.u_sha_inst.intr_fifo_empty_o;
+  assign kmac_intr_if.kmac_err   = dut.u_sha_inst.intr_kmac_err_o;
+
   initial begin
     // drive clk and rst_n from clk_if
     clk_rst_if.set_active();
     uvm_config_db#(virtual clk_rst_if)::set(null, "*.env", "clk_rst_vif", clk_rst_if);
     uvm_config_db#(virtual ahb_if)::set(null, "*.env", "ahb_vif", ahb_if_h);
     uvm_config_db#(virtual sha3_intr_if)::set(null, "*.env", "intr_vif", intr_if);
+    uvm_config_db#(virtual kmac_intr_if)::set(null, "*.env", "kmac_intr_vif", kmac_intr_if);
     uvm_config_db#(virtual pins_if#(1))::set(null, "*.env", "busy_vif", busy_if);
 
     // In the block-level environment, there is one subordinate on the AHB: the sha3_ctrl instance,

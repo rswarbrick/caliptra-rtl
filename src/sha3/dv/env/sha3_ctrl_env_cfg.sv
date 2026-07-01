@@ -6,6 +6,7 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
 
   virtual ahb_if               m_ahb_vif;
   virtual sha3_intr_if         m_intr_vif;
+  virtual kmac_intr_if         m_kmac_intr_vif;
   virtual pins_if #(.Width(1)) m_busy_vif;
 
   // Masked KMAC is the default configuration

@@ -32,6 +32,10 @@ class sha3_ctrl_env extends dv_base_env #(
     if (!uvm_config_db#(virtual sha3_intr_if)::get(this, "", "intr_vif", cfg.m_intr_vif)) begin
       `uvm_fatal(get_full_name(), "Failed to get intr_vif from uvm_config_db.")
     end
+    if (!uvm_config_db#(virtual kmac_intr_if)::get(this, "",
+                                                   "kmac_intr_vif", cfg.m_kmac_intr_vif)) begin
+      `uvm_fatal(get_full_name(), "Failed to get kmac_intr_vif from uvm_config_db.")
+    end
     if (!uvm_config_db#(virtual pins_if #(1))::get(this, "", "busy_vif", cfg.m_busy_vif)) begin
       `uvm_fatal(get_full_name(), "Failed to get busy_vif from uvm_config_db.")
     end

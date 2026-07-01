@@ -7,11 +7,13 @@
 // These are just an "error" and a "notification" interrupt, which report that some interrupt of
 // that level has been emitted from kmac.
 //
-//        KMAC        |  sha3_ctrl
-// -------------------+-------------
-//  intr_kmac_done_o  |   notif
-//  intr_fifo_empty_o |   notif
-//  intro_kmac_err_o  |   error
+//          KMAC        |  sha3_ctrl
+//   -------------------+-------------
+//    intr_kmac_done_o  |   notif
+//    intr_fifo_empty_o |   notif
+//    intro_kmac_err_o  |   error
+//
+// The interrupts from the kmac block itself are tracked separately in a kmac_intr_if instance.
 
 interface sha3_intr_if (input clk_i, input rst_ni);
   wire error;

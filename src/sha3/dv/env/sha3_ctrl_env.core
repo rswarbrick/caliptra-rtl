@@ -17,6 +17,7 @@ filesets:
     files:
       - sha3_ctrl_env_pkg.sv
       - sha3_intr_if.sv
+      - kmac_intr_if.sv
       - sha3_ctrl_env_cfg.sv: {is_include_file: true}
       - sha3_ctrl_env_cov.sv: {is_include_file: true}
       - sha3_ctrl_virtual_sequencer.sv: {is_include_file: true}

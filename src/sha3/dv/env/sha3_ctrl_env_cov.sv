@@ -279,6 +279,28 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
    }
   endgroup
 
+  covergroup intr_cg with function sample(int unsigned idx,
+                                          bit          enabled,
+                                          bit          state);
+    cp_idx: coverpoint idx {
+      bins all_values[] = {[0:2]};
+    }
+    cp_enabled: coverpoint enabled;
+    cp_state:   coverpoint state;
+    cross cp_idx, cp_enabled, cp_state;
+  endgroup
+
+  // The interrupt pins, in the same order as the fields of the INTR_STATE register
+  covergroup intr_pins_cg with function sample(int unsigned idx, bit state);
+    cp_idx: coverpoint idx {
+      bins kmac_done  = {0};
+      bins fifo_empty = {1};
+      bins kmac_err   = {2};
+    }
+    cp_state: coverpoint state;
+    cross cp_idx, cp_state;
+  endgroup
+
   function void sample_cfg(bit kmac,
                            bit xof,
                            sha3_pkg::keccak_strength_e kstrength,
@@ -329,6 +351,8 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     sideload_cg = new();
     error_cg = new();
     entropy_timer_cg = new();
+    intr_cg = new();
+    intr_pins_cg = new();
   endfunction : new
 
   virtual function void build_phase(uvm_phase phase);
