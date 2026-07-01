@@ -464,6 +464,42 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     end
   endtask
 
+  // Set the access permissions for all fields controlled by CFG_REGWEN to the given value
+  //
+  // Conveniently, all of these fields are RW until the regwen is cleared, at which point they
+  // become RO.
+  function void apply_regwen_access(string mode);
+    uvm_reg_field cfg_fields[$];
+
+    ral.kmac_core.CFG_SHADOWED.get_fields(cfg_fields);
+    foreach (cfg_fields[i]) void'(cfg_fields[i].set_access(mode));
+
+    for (int unsigned i = 0; i < 11; i++) begin
+      uvm_reg_field reg_fields[$];
+
+      string  reg_name = $sformatf("PREFIX_%0d", i);
+      uvm_reg pfx_reg  = ral.kmac_core.get_reg_by_name(reg_name);
+
+      pfx_reg.get_fields(reg_fields);
+      foreach (reg_fields[j]) void'(reg_fields[j].set_access(mode));
+    end
+  endfunction
+
+  // Update the prediction for CFG_REGWEN to the given value
+  //
+  // This calls predict() to update the register model, using UVM_PREDICT_DIRECT (since the register
+  // is maintained by HW anyway). It also updates the access for all fields that are protected by
+  // the flag.
+  function void predict_regwen(bit new_value);
+    bit old_value = |ral.kmac_core.CFG_REGWEN.get_mirrored_value();
+    if (new_value != old_value) begin
+      if (!ral.kmac_core.CFG_REGWEN.predict(.value(new_value), .kind(UVM_PREDICT_DIRECT))) begin
+        `uvm_error(get_full_name(), "Failed to predict value of CFG_REGWEN.")
+      end
+      apply_regwen_access(new_value ? "RW" : "RO");
+    end
+  endfunction
+
   // Do a backdoor read of the STATUS register and use the result set set the fifo_empty and
   // fifo_full output arguments.
   task backdoor_read_fifo_status(output bit fifo_empty, output bit fifo_full);
@@ -625,6 +661,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
     // Clear the msgfifo_access flag (there's nothing currently accessing MSG_FIFO)
     msgfifo_access = 0;
+
+    // The reset means that we are no longer running a SHA operation (which would cause the
+    // hardware-maintained CFG_REGWEN to be false).
+    predict_regwen(1);
   endfunction
 
   // This function should be called to reset internal state to prepare for a new hash operation
