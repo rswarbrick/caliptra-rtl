@@ -93,8 +93,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   local int unsigned msgfifo_txn_idx;
 
   bit intr_kmac_done;
-  bit intr_fifo_empty;
-  bit pre_intr_fifo_empty;
   bit intr_kmac_err;
 
   // Error tracking
@@ -410,12 +408,16 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   //   4- The message FIFO must also have been full previously. Otherwise, the hardware empties
   //      the FIFO faster than software can fill it and there is no point in interrupting the
   //      software to inform it about the message FIFO being empty.
+  //
+  // This task consumes time while waiting for the fifo empty status to be updated, but exits early
+  // on reset.
   virtual task predict_fifo_empty_intr();
     uvm_status_e   txn_status;
     uvm_reg_data_t intr_state_rdata;
 
     bit fifo_empty_status_neg;
     bit fifo_empty_status_last = fifo_empty_status;
+    bit pre_intr_fifo_empty;
 
     // Get FIFO empty/full status directly from the DUT as the FIFO level is not modeled
     backdoor_read_fifo_status(fifo_empty_status, fifo_full_status);
@@ -452,19 +454,23 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
       pre_intr_fifo_empty = 0;
     end
 
-    // Delay FIFO empty signal to be aligned with the DUT behavior
-    fork
-      begin
-        cfg.clk_rst_vif.wait_clks(1);
-        intr_fifo_empty = pre_intr_fifo_empty;
-      end
-    join_none
+    // The dut takes a cycle to update its FIFO_EMPTY signal. Wait that cycle, then wait for
+    // INTR_STATE not to be busy (so that we can backdoor-read and predict its value). Exit early on
+    // reset.
+    fork : isolation_fork begin
+      fork
+        wait(cfg.under_reset);
+        begin
+          cfg.clk_rst_vif.wait_clks(1);
+          wait(!ral.kmac_core.INTR_STATE.is_busy());
+        end
+      join_any
+      disable fork;
+    end join
+    if (cfg.under_reset) return;
 
-    // Wait needed to avoid race condition for register access
-    wait(!ral.kmac_core.INTR_STATE.is_busy());
-
-    // Update expected value
-    if (!ral.kmac_core.INTR_STATE.FIFO_EMPTY.predict(.value(intr_fifo_empty),
+    // Update expected register value
+    if (!ral.kmac_core.INTR_STATE.FIFO_EMPTY.predict(.value(pre_intr_fifo_empty),
                                                      .kind(UVM_PREDICT_DIRECT))) begin
       `uvm_error(get_full_name(), "Failed to predict FIFO_EMPTY field of INTR_STATE.")
     end
@@ -526,7 +532,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     sha3_squeeze      = ral.kmac_core.STATUS.sha3_squeeze.get_reset();
     fifo_empty_status = ral.kmac_core.STATUS.fifo_empty.get_reset();
     fifo_full_status  = ral.kmac_core.STATUS.fifo_full.get_reset();
-    intr_fifo_empty   = ral.kmac_core.INTR_STATE.FIFO_EMPTY.get_reset();
 
     // Zero the request and transaction counters
     m_ahb_req_counter = 0;
