@@ -290,6 +290,23 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     cross cp_idx, cp_enabled, cp_state;
   endgroup
 
+  covergroup intr_test_cg with function sample(int unsigned idx,
+                                               bit          intr_test,
+                                               bit          intr_en,
+                                               bit          intr_state);
+    cp_idx: coverpoint idx {
+      bins all_values[] = {[0:2]};
+    }
+    cp_test:  coverpoint intr_test;
+    cp_en:    coverpoint intr_en;
+    cp_state: coverpoint intr_state;
+    cross cp_idx, cp_test, cp_en, cp_state {
+      // Ignore the bin where we are testing an interrupt but don't expect its state to be set. This
+      // won't happen (indeed, it would be a bug in the DV code).
+      ignore_bins test_1_state_0 = binsof(cp_test) intersect {1} && binsof(cp_state) intersect {0};
+    }
+  endgroup
+
   // The interrupt pins, in the same order as the fields of the INTR_STATE register
   covergroup intr_pins_cg with function sample(int unsigned idx, bit state);
     cp_idx: coverpoint idx {
@@ -352,6 +369,7 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     error_cg = new();
     entropy_timer_cg = new();
     intr_cg = new();
+    intr_test_cg = new();
     intr_pins_cg = new();
   endfunction : new
 
