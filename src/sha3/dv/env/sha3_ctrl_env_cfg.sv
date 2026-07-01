@@ -61,6 +61,10 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
                    `UVM_REG_DATA_WIDTH,
                    `UVM_REG_BYTENABLE_WIDTH);
 
+    // Configure CFG_SHADOWED by calling set_is_shadowed(), which will cause its predict functions
+    // to do the correct thing and need a double UVM_PREDICT_WRITE before the value changes.
+    ral.kmac_core.CFG_SHADOWED.set_is_shadowed();
+
     ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_kmac_done.q",  0, 1, BkdrRegPathRtl);
     ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_fifo_empty.q", 1, 1, BkdrRegPathRtl);
     ral.kmac_core.INTR_STATE.add_path_slice("u_intr_state_kmac_err.q",   2, 1, BkdrRegPathRtl);
