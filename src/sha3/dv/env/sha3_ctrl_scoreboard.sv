@@ -341,6 +341,36 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           cov.intr_pins_cg.sample(i, intr_pins[i]);
         end
       end
+    end else if (register == ral.kmac_core.INTR_TEST) begin
+      // On a write to the INTR_TEST register, update the prediction of INTR_STATE to match the bits
+      // that are being set.
+      //
+      // If coverage is enabled, sample intr_test_cg as well.
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t intr_en   = ral.kmac_core.INTR_ENABLE.get_mirrored_value();
+        uvm_reg_data_t old_state = ral.kmac_core.INTR_STATE.get_mirrored_value();
+        uvm_reg_data_t real_mask = (1 << KmacNumIntrs) - 1;
+        // Note: This works because we have few enough interrupts that all of them will be in the
+        // bottom byte of wdata.
+        uvm_reg_data_t wmask     = txn.m_request.m_wstrb[0] ? '1 : '0;
+        uvm_reg_data_t bits_set  = real_mask & txn.m_request.m_wdata & wmask;
+        uvm_reg_data_t new_state = old_state | bits_set;
+
+        // Predict the new state with UVM_PREDICT_READ (telling the register model that we just read
+        // new_state from the register). Using this instead of UVM_PREDICT_DIRECT avoids a race if
+        // there is write to INTR_STATE that has been queued up in the register agent. We can't use
+        // UVM_PREDICT_WRITE because the register is W1C.
+        if (!ral.kmac_core.INTR_STATE.predict(.value(new_state), .kind(UVM_PREDICT_READ))) begin
+          `uvm_error(get_full_name(), "Failed to predict new value for INTR_STATE.")
+        end
+
+        if (cfg.en_cov && |wmask) begin
+          for (int unsigned i = 0; i < KmacNumIntrs; i++) begin
+            cov.intr_test_cg.sample(i, bits_set[i], intr_en[i], new_state[i]);
+          end
+        end
+      end
+
     end
   endfunction
 
