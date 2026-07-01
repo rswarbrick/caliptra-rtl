@@ -217,6 +217,45 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
             msg_fifo_start <= bus_req.m_addr + (1 << bus_req.m_size) - 1);
   endfunction
 
+  // If this is a bus transaction that addresses a register, return the model of that register.
+  //
+  // If HSIZE means that the transaction doesn't address exactly the bits of the register, this
+  // generates a warning (because the scoreboard might not know how to model the access).
+  function dv_base_reg register_for_txn_request(ahb_txn_request_item bus_req);
+    uvm_reg       register;
+    dv_base_reg   dv_register;
+    int unsigned  msb;
+
+    register = ral.get_default_map().get_reg_by_offset(bus_req.m_addr);
+    if (register == null) return null;
+
+    if (!$cast(dv_register, register)) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("The %0s register is not a dv_base_reg.", register.get_name()))
+      return null;
+    end
+
+    msb = dv_register.get_msb_pos();
+
+    // At this point, msb is the highest bit of the register that is contained in a field. We know
+    // that bus_req.m_addr targets the bottom byte of the register, so must check that
+    // (1 << bus_req.m_size) bytes covers the MSB.
+    if (msb >= (1 << bus_req.m_size) * 8) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"Bus access to 0x%0h addresses the %0s register, ",
+                            "whose highest field has msb %0d. But HSIZE is %0d so ",
+                            "the access only covers the bits with indices up to %0d. ",
+                            "Partial register access is not yet modelled in the scoreboard."},
+                           bus_req.m_addr,
+                           dv_register.get_name(),
+                           msb,
+                           bus_req.m_size,
+                           (1 << bus_req.m_size) * 8 - 1))
+    end
+
+    return dv_register;
+  endfunction
+
   // The write function for m_ahb_req_imp, which is called for every bus request reported by the
   // monitor in the AHB agent.
   function void write_ahb_req(ahb_txn_request_item bus_req);
@@ -259,6 +298,18 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         bus_txn.m_request.m_trans inside {ahb_agent_pkg::TransSequential,
                                           ahb_agent_pkg::TransNonSequential}) begin
 
+      // Was this a successful transaction that addressed a register? If so, pass it to on_reg_txn
+      // to predict the effect of a write or to check the result of a read.
+      //
+      // If the transaction is incomplete, this means that a reset was applied: ignore the
+      // transaction entirely.
+      if (bus_txn.m_response != null && !bus_txn.m_response.m_resp) begin
+        uvm_reg register = register_for_txn_request(bus_txn.m_request);
+        if (register != null) begin
+          on_reg_txn(bus_txn, register);
+        end
+      end
+
       // Was this transaction a write to MSG_FIFO? If so, we should track some associated functional
       // coverage and set msg (a class variable that tracks the input message)
       if (is_write_to_msg_fifo(bus_txn.m_request)) begin
@@ -276,6 +327,26 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
     // Increment the number of transactions that have been seen
     m_ahb_txn_counter++;
+  endfunction
+
+  // Called with a complete, successful monitored bus transaction item and the register that it
+  // addressed.
+  function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
+    if (register == ral.kmac_core.INTR_STATE) begin
+      // On a read of the INTR_STATE register when coverage is enabled, update some covergroups with
+      // the enable bits that we have seen and interrupt pins that were asserted.
+      if (cfg.en_cov && !txn.m_request.m_write) begin
+        uvm_reg_data_t intr_en = ral.kmac_core.INTR_ENABLE.get_mirrored_value();
+        logic [2:0] intr_pins = {cfg.m_kmac_intr_vif.kmac_err,
+                                 cfg.m_kmac_intr_vif.fifo_empty,
+                                 cfg.m_kmac_intr_vif.kmac_done};
+
+        for (int unsigned i = 0; i < KmacNumIntrs; i++) begin
+          cov.intr_cg.sample(i, intr_en[i], txn.m_response.m_rdata[i]);
+          cov.intr_pins_cg.sample(i, intr_pins[i]);
+        end
+      end
+    end
   endfunction
 
   // Triggers the predict_fifo_empty_intr task only when necessary: on particular events or at each
