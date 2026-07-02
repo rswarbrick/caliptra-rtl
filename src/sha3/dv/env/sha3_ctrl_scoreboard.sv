@@ -47,9 +47,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // with the internal `complete` signal to allow the scb easier handling of these scenarios.
   bit keccak_complete_cycle = 0;
 
-  // this bit goes high for a cycle when a manual squeezing is requested
-  bit req_manual_squeeze = 0;
-
   // The CFG.entropy_ready field is only used to transition the entropy FSM into fetching entropy
   // from the reset state, so we can only rely on writes to CFG.entropy_ready to update internal
   // scoreboard state after a reset is seen.
@@ -112,14 +109,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   kmac_app_st_e   app_st = StIdle;
   bit             app_fsm_active = 0;
   app_mux_sel_e   app_mux_sel = SelNone;
-
-  // key length enum
-  key_len_e key_len;
-
-  // secret keys
-  //
-  // max key size is 512-bits
-  bit [KMAC_NUM_SHARES-1:0][KMAC_NUM_KEYS_PER_SHARE-1:0][31:0] keys;
 
   // prefix words
   bit [31:0] prefix[KMAC_NUM_PREFIX_WORDS];
@@ -397,8 +386,135 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           end
         end
       end
+    end else if (register == ral.kmac_core.CMD) begin
+      if (txn.m_request.m_write) begin
+        bit [31:0] wdata = txn.m_request.m_wdata[31:0];
+        bit [31:0] cmd_field_mask_at_0 = (32'd1 << ral.kmac_core.CMD.cmd.get_n_bits()) - 1;
 
+        // Mirror the value written to the cmd field into the kmac_cmd class variable (which will
+        // trigger other tasks in this class).
+        kmac_cmd = (wdata >> ral.kmac_core.CMD.cmd.get_lsb_pos()) & cmd_field_mask_at_0;
+
+        case (kmac_cmd)
+          CmdStart: begin
+            if (checked_kmac_cmd != CmdNone) begin
+              // If checked_kmac_cmd is not CmdNone, that means that there is some other command
+              // currently in progress.
+
+              kmac_err.valid = 1;
+              kmac_err.code  = kmac_pkg::ErrSwCmdSequence;
+              kmac_err.info  = get_kmac_sw_cmd_seq_err_info(kmac_cmd);
+
+              predict_err(.is_kmac_err(1));
+            end else if (!valid_hash_mode_and_strength()) begin
+              // Predict the error if hash_mode and strength aren't valid together.
+
+              kmac_err.valid  = 1;
+              kmac_err.code   = kmac_pkg::ErrUnexpectedModeStrength;
+              kmac_err.info   = {8'h2, 10'h0, 2'(hash_mode), 1'b0, 3'(strength)};
+
+              predict_err(.is_kmac_err(1));
+            end else begin
+              // We seem to be good to start the operation. Update the prediction for CFG_REGWEN:
+              // registers are read-only while the operation is running.
+              unchecked_kmac_cmd = CmdStart;
+              predict_regwen(0);
+            end
+
+            // Starting a new command will invalidate any digest that we have read (and we might
+            // have read some extra digest words after sending Done). Clear the validity bits for
+            // any such words here.
+            digest_valid = '0;
+          end
+          CmdProcess: begin
+            if (checked_kmac_cmd == CmdStart) begin
+              // kmac will now compute the digest
+              unchecked_kmac_cmd = CmdProcess;
+            end else begin // SW sent wrong command
+              kmac_err.valid = 1;
+              kmac_err.code  = kmac_pkg::ErrSwCmdSequence;
+              kmac_err.info  = get_kmac_sw_cmd_seq_err_info(kmac_cmd);
+
+              predict_err(.is_kmac_err(1));
+            end
+          end
+          CmdManualRun: begin
+            if (checked_kmac_cmd inside {CmdProcess, CmdManualRun}) begin
+              // kmac will now squeeze more output data
+              unchecked_kmac_cmd = CmdManualRun;
+
+              // Mask out status squeeze check because it requires cycle accurate prediction.
+              // Use sequence to backdoor check if squeeze is reset to 0 after each squeeze
+              // command.
+              status_mask[KmacStatusSha3Squeeze] = 1;
+            end else begin // SW sent wrong command
+              kmac_err.valid = 1;
+              kmac_err.code  = kmac_pkg::ErrSwCmdSequence;
+              kmac_err.info  = get_kmac_sw_cmd_seq_err_info(kmac_cmd);
+
+              predict_err(.is_kmac_err(1));
+            end
+          end
+          CmdDone: begin
+            if (checked_kmac_cmd inside {CmdProcess, CmdManualRun}) begin
+              unchecked_kmac_cmd = CmdDone;
+
+              sha3_squeeze = 0;
+              `uvm_info(`gfn, "dropped sha3_squeeze", UVM_HIGH)
+
+              // sample coverage of message length
+              if (cfg.en_cov) begin
+                cov.msg_len_cg.sample(msg.size());
+              end
+
+              status_mask[KmacStatusSha3Squeeze] = 0;
+
+              // Calculate the digest using DPI and check for correctness
+              if (do_check_digest) check_digest();
+
+              // Flush all scoreboard state to prepare for the next hash operation
+              clear_state();
+
+              predict_regwen(1);
+
+            end else begin // SW sent wrong command
+
+              kmac_err.valid = 1;
+              kmac_err.code  = kmac_pkg::ErrSwCmdSequence;
+              kmac_err.info  = get_kmac_sw_cmd_seq_err_info(kmac_cmd);
+
+              predict_err(.is_kmac_err(1));
+            end
+          end
+          CmdNone: begin
+            // RTL internal value, doesn't actually do anything
+          end
+          default: begin
+            `uvm_error(get_full_name(),
+                       $sformatf({"Invalid value written to CMD register (0x%0h): ",
+                                  "not modelled in scoreboard."},
+                                 kmac_cmd))
+          end
+        endcase
+      end
     end
+  endfunction
+
+  // Return true if the mirrored hash_mode and strength are a valid pair
+  function bit valid_hash_mode_and_strength();
+    case (hash_mode)
+      sha3_pkg::Shake, sha3_pkg::CShake: begin
+        return (strength inside {sha3_pkg::L128, sha3_pkg::L256});
+      end
+
+      sha3_pkg::Sha3: begin
+        return (strength != sha3_pkg::L128);
+      end
+
+      default: begin
+        return 0;
+      end
+    endcase
   endfunction
 
   // Triggers the predict_fifo_empty_intr task only when necessary: on particular events or at each
@@ -678,7 +794,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     msg.delete();
     kmac_app_msg.delete();
 
-    req_manual_squeeze      = 0;
     msg_digest_done         = 0;
 
     set_entropy_fetch(0);
@@ -692,7 +807,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
     app_st = StIdle;
 
-    keys          = '0;
     prefix        = '{default:0};
     digest_share0 = {};
     digest_share1 = {};
@@ -732,30 +846,13 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     string fname;
     string custom_str;
 
-    // Use this to store the correct set of keys (SW-provided or sideloaded)
-    bit [KMAC_NUM_SHARES-1:0][KMAC_NUM_KEYS_PER_SHARE-1:0][31:0] exp_keys;
-
-    // The actual key used for KMAC operations
-    bit [31:0] unmasked_key[$];
-
     // key byte-stream for the DPI model
     bit [7:0] dpi_key_arr[];
-
-    // Intermediate array for streaming `unmasked_key` into `dpi_key_arr`
-    bit [7:0] unmasked_key_bytes[];
-
-    int key_word_len, key_byte_len;
 
     // Actual hash_mode based on interface or SW register
     sha3_pkg::sha3_mode_e actual_hash_mode = hash_mode;
 
     if (cfg.en_scb == 0) return;
-
-    key_word_len = get_key_size_words(key_len);
-    key_byte_len = get_key_size_bytes(key_len);
-
-    `uvm_info(`gfn, $sformatf("key_word_len: %0d", key_word_len), UVM_HIGH)
-    `uvm_info(`gfn, $sformatf("key_byte_len: %0d", key_byte_len), UVM_HIGH)
 
     // Calculate:
     // - the expected output length in bytes
@@ -771,7 +868,7 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     if (cfg.en_cov) begin
       // sample configuration coverage, as only now do we know which KMAC variant is used
       // (xof/non-xof)
-      cov.sample_cfg(kmac_en, xof_en, strength, actual_hash_mode, key_len,
+      cov.sample_cfg(kmac_en, xof_en, strength, actual_hash_mode,
                      `gmv(ral.kmac_core.CFG_SHADOWED.msg_endianness),
                      `gmv(ral.kmac_core.CFG_SHADOWED.state_endianness),
                      entropy_mode, entropy_fast_process);
@@ -874,23 +971,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         get_fname_and_custom_str(fname, custom_str);
 
         if (kmac_en) begin
-          // Calculate the unmasked key
-          exp_keys = keys;
-          for (int i = 0; i < key_word_len; i++) begin
-            if (cfg.enable_masking || cfg.sw_key_masked) begin
-              unmasked_key.push_back(exp_keys[0][i] ^ exp_keys[1][i]);
-            end else begin
-              unmasked_key.push_back(exp_keys[0][i]);
-            end
-            `uvm_info(`gfn, $sformatf("unmasked_key[%0d] = 0x%0x", i, unmasked_key[i]), UVM_HIGH)
-          end
-
-          // Convert the key array into a byte array for the DPI model
-          unmasked_key_bytes = {<< 32 {unmasked_key}};
-          dpi_key_arr = {<< byte {unmasked_key_bytes}};
-          `uvm_info(`gfn, $sformatf("dpi_key_arr.size(): %0d", dpi_key_arr.size()), UVM_HIGH)
-          `uvm_info(`gfn, $sformatf("dpi_key_arr: %0p", dpi_key_arr), UVM_HIGH)
-
           case (strength)
             sha3_pkg::L128: begin
               if (xof_en) begin
