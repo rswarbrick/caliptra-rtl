@@ -72,8 +72,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   kmac_cmd_e unchecked_kmac_cmd = CmdNone;
   kmac_cmd_e checked_kmac_cmd = CmdNone;
 
-  bit msg_digest_done;
-
   // SHA3 status bits
   bit sha3_idle;
   bit sha3_absorb;
@@ -119,19 +117,33 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // input message from keymgr
   byte kmac_app_msg[$];
 
-  // output digest from static KMAC_APP interfaces
-  bit [kmac_pkg::AppDigestW-1:0] kmac_app_digest_share0;
-  bit [kmac_pkg::AppDigestW-1:0] kmac_app_digest_share1;
+  // The Keccak state has a single share, which is 1600 bits (200 bytes) in size.
+  localparam BytesInObservedState = 200;
 
-  // output digests
-  bit [7:0] digest_share0[];
-  bit [7:0] digest_share1[];
+  // The digest can be found by reading from the STATE window.
+  //
+  // The observed_state_t represents the information that we have seen from reading the Keccak state
+  // since the last time there was a PROCESS or RUN command.
+  //
+  // The offsets in this window all treat the state as having been reported in little-endian form:
+  // the scoreboard will record the bytes of each 32-bit word in reverse order if it sees a read
+  // from the STATE window when state_endianness is true (so the state is reported by the RTL in
+  // big-endian order).
+  typedef struct {
+    bit [BytesInObservedState-1:0] valid;
+    bit [7:0]                      seen [BytesInObservedState];
+  } observed_state_t;
 
-  // This mask is used to mask reads from the state windows.
-  // We need to make this a class variable as we set the mask value
-  // during the address read phase, but then need its value to persist
-  // through the data read phase.
-  bit [3:0] state_mask;
+  // The current observed state. This will be discarded when starting a new computation (CmdStart)
+  // and will be appended to m_observed_states when there is a squeeze operation (CmdRun) then
+  // cleared to hold observations of the new state.
+  observed_state_t m_cur_state;
+
+  // A queue of observed states. These states (together with the current state from m_cur_state) are
+  // used by check_digest, which compares their observed values with a C++ model over DPI.
+  //
+  // The queue is cleared when starting a new operation (CmdStart).
+  observed_state_t m_observed_states[$];
 
   // This mask is used to avoid building a cycle accurate scoreboard to check kmac message fifo.
   // This SCB will only check that when KmacStatusFifoFull is set, the FIFO depth should be full
@@ -228,6 +240,22 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
             msg_fifo_start <= bus_req.m_addr + (1 << bus_req.m_size) - 1);
   endfunction
 
+  // If addr is an address in the STATE window, return 1 and write the byte offset to the index
+  // output argument. If not, return 0.
+  local
+  function bit get_index_in_state_window(bit [63:0] addr, output uvm_reg_addr_t index);
+    uvm_mem        state_mem   = ral.kmac_core.STATE.m_mem;
+    uvm_reg_addr_t state_start = state_mem.get_address();
+    int unsigned   state_size  = state_mem.get_size() * state_mem.get_n_bytes();
+
+    if (state_start <= addr && addr - state_start < state_size) begin
+      index = addr - state_start;
+      return 1;
+    end
+
+    return 0;
+  endfunction
+
   // If this is a bus transaction that addresses a register, return the model of that register.
   //
   // If HSIZE means that the transaction doesn't address exactly the bits of the register, this
@@ -308,17 +336,13 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         !bus_txn.m_response.m_resp &&
         bus_txn.m_request.m_trans inside {ahb_agent_pkg::TransSequential,
                                           ahb_agent_pkg::TransNonSequential}) begin
+      uvm_reg_addr_t idx_in_state_window;
 
       // Was this a successful transaction that addressed a register? If so, pass it to on_reg_txn
-      // to predict the effect of a write or to check the result of a read.
-      //
-      // If the transaction is incomplete, this means that a reset was applied: ignore the
-      // transaction entirely.
-      if (bus_txn.m_response != null && !bus_txn.m_response.m_resp) begin
-        uvm_reg register = register_for_txn_request(bus_txn.m_request);
-        if (register != null) begin
-          on_reg_txn(bus_txn, register);
-        end
+      // to update the register model's prediction of the register contents.
+      uvm_reg register = register_for_txn_request(bus_txn.m_request);
+      if (register != null) begin
+        on_reg_txn(bus_txn, register);
       end
 
       // Was this transaction a write to MSG_FIFO? If so, we should track some associated functional
@@ -332,6 +356,37 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         for (int unsigned i = 0; i < num_bytes; i++) begin
           int unsigned pick_idx = big_endian ? num_bytes - 1 - i : i;
           msg.push_back(bus_txn.m_request.m_wdata[(8 * pick_idx) +: 8]);
+        end
+      end
+
+      // If this is a read from the STATE window, update m_cur_state with the bytes that have been
+      // read.
+      if (!bus_txn.m_request.m_write &&
+          get_index_in_state_window(bus_txn.m_request.m_addr, idx_in_state_window)) begin
+        int unsigned end_idx = idx_in_state_window + (1 << bus_txn.m_request.m_size);
+        bit          big_endian = ral.kmac_core.CFG_SHADOWED.state_endianness.get_mirrored_value();
+
+        if (idx_in_state_window > $size(m_cur_state.seen)) begin
+          `uvm_fatal(get_full_name(),
+                     $sformatf({"The address 0x%0h is reported as being in the STATE window, ",
+                                "with offset %0d. But m_cur_state.seen only has %0d elements."},
+                               bus_txn.m_request.m_addr,
+                               idx_in_state_window,
+                               $size(m_cur_state.seen)))
+        end
+
+        for (int unsigned idx = idx_in_state_window;
+             idx < end_idx && idx < $size(m_cur_state.seen);
+             idx++) begin
+          int unsigned idx_in_txn = idx - idx_in_state_window;
+          int unsigned lsb = 8*idx_in_txn;
+
+          int unsigned idx_in_word    = idx & 3;
+          int unsigned le_idx_in_word = big_endian ? 3 - idx_in_word : idx_in_word;
+          int unsigned le_idx         = idx - idx_in_word + le_idx_in_word;
+
+          m_cur_state.valid[le_idx] = 1;
+          m_cur_state.seen[le_idx]  = (bus_txn.m_response.m_rdata >> lsb) & 8'hff;
         end
       end
     end
@@ -424,7 +479,8 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
             // Starting a new command will invalidate any digest that we have read (and we might
             // have read some extra digest words after sending Done). Clear the validity bits for
             // any such words here.
-            digest_valid = '0;
+            m_cur_state.valid = '0;
+            m_observed_states.delete();
           end
           CmdProcess: begin
             if (checked_kmac_cmd == CmdStart) begin
@@ -442,6 +498,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
             if (checked_kmac_cmd inside {CmdProcess, CmdManualRun}) begin
               // kmac will now squeeze more output data
               unchecked_kmac_cmd = CmdManualRun;
+
+              // Append any observed state in m_cur_state to m_observed_states and clear m_cur_state
+              // again.
+              m_observed_states.push_back(m_cur_state);
+              m_cur_state.valid = '0;
 
               // Mask out status squeeze check because it requires cycle accurate prediction.
               // Use sequence to backdoor check if squeeze is reset to 0 after each squeeze
@@ -794,8 +855,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     msg.delete();
     kmac_app_msg.delete();
 
-    msg_digest_done         = 0;
-
     set_entropy_fetch(0);
 
     kmac_err = '{valid: 1'b0,
@@ -807,12 +866,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
 
     app_st = StIdle;
 
-    prefix        = '{default:0};
-    digest_share0 = {};
-    digest_share1 = {};
+    prefix = '{default:0};
 
-    kmac_app_digest_share0 = '0;
-    kmac_app_digest_share1 = '0;
+    m_cur_state.valid = '0;
+    m_observed_states.delete();
   endfunction
 
   // This function is called whenever a CmdDone command is issued to KMAC,
@@ -824,9 +881,8 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // From this we can decode what the initially requested output length is.
   //
   // We also need to decode what the prefix is (only for KMAC), as only the encoded values
-  // are written to the CSRs.  virtual function void check_digest();
+  // are written to the CSRs.
   virtual function void check_digest();
-
     // Cast to an array so we can pass this into the DPI functions
     bit [7:0] msg_arr[];
 
@@ -836,11 +892,17 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     // Set this to the calculated output length for XOFs
     int output_len_bytes;
 
+    // The number of digest bytes that have been compared in the loop at the bottom of the function.
+    // The function will print a warning if none are checked.
+    int unsigned checked_count;
+
+    // A flag that counts the number of mismatches seen by the comparison loop at the bottom of the
+    // function. Using this (and UVM_WARNING) allows a few bytes to be reported before the
+    // simulation stops, even when UVM_MAX_QUIT_COUNT=1.
+    int unsigned mismatches_seen;
+
     // Array to hold the digest read from the state windows
     bit [7:0] unmasked_digest[];
-
-    // Array to hold the expected digest calculated by DPI model
-    bit [7:0] dpi_digest[];
 
     // Function name and customization strings for KMAC operations
     string fname;
@@ -852,18 +914,15 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     // Actual hash_mode based on interface or SW register
     sha3_pkg::sha3_mode_e actual_hash_mode = hash_mode;
 
+    // Array to hold the expected digest calculated by DPI model
+    bit [7:0] dpi_digest[];
+
     if (cfg.en_scb == 0) return;
 
     // Calculate:
     // - the expected output length in bytes
     // - if we are using the xof version of kmac
     get_digest_len_and_xof(output_len_bytes, xof_en, msg);
-
-    // quick check that the calculated output length is the same
-    // as the number of bytes read from the digest window
-    `DV_CHECK_EQ_FATAL(digest_share0.size(), output_len_bytes,
-        $sformatf("Calculated output length(%0d) doesn't match actual output length(%0d)!",
-                  output_len_bytes, digest_share0.size()))
 
     if (cfg.en_cov) begin
       // sample configuration coverage, as only now do we know which KMAC variant is used
@@ -879,25 +938,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
       end
     end
 
-
     `uvm_info(`gfn, $sformatf("output_len_bytes: %0d", output_len_bytes), UVM_HIGH)
     `uvm_info(`gfn, $sformatf("xof_en: %0d", xof_en), UVM_HIGH)
 
     // initialize arrays
     dpi_digest = new[output_len_bytes];
-    unmasked_digest = new[output_len_bytes];
-
-    /////////////////////////////////
-    // Calculate the actual digest //
-    /////////////////////////////////
-    if (cfg.enable_masking) begin
-      foreach (unmasked_digest[i]) begin
-        unmasked_digest[i] = digest_share0[i] ^ digest_share1[i];
-      end
-    end else begin
-      unmasked_digest = digest_share0;
-    end
-    `uvm_info(`gfn, $sformatf("unmasked_digest: %0p", unmasked_digest), UVM_HIGH)
 
     ///////////////////////////////////////////////////////////
     // Calculate the expected digest using the DPI-C++ model //
@@ -1046,42 +1091,143 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     /////////////////////////////////////////
     // Compare actual and expected digests //
     /////////////////////////////////////////
-    for (int i = 0; i < output_len_bytes; i++) begin
-      `DV_CHECK_EQ_FATAL(unmasked_digest[i], dpi_digest[i],
-          $sformatf("Mismatch between unmasked_digest[%0d] and dpi_digest[%0d]", i, i))
-    end
 
+    // This loop is needed for SHAKE and cSHAKE, where we might have issued Run commands to get new
+    // states.
+    for (int unsigned i = 0; i < 1 + m_observed_states.size(); i++) begin
+      compare_state(i,
+                    dpi_digest,
+                    (i == m_observed_states.size()) ? m_cur_state : m_observed_states[i]);
+    end
   endfunction
 
-  // This function is used to calculate the requested digest length
+  // Compare observed digests for a state with dpi_digest (which came from the model).
+  //
+  //    state_idx:  The number of times the Run command had been issued before the observed state
+  //                was seen.
+  //
+  //    dpi_digest: A complete digest computed by the model, which should have a "correct" value for
+  //                every value available in observed.
+  //
+  //    observed:   The bus reads that have been observed for this state.
+  function void compare_state(int unsigned     state_idx,
+                              bit [7:0]        dpi_digest[],
+                              observed_state_t observed);
+    // The size of a single STATE object is determined by the capacity which, in turn, is determined
+    // by the strength.
+    int unsigned capacity_bytes = strength_to_capacity(strength) / 8;
+
+    // The state whose values are in observed might not start at index zero in dpi_digest (the
+    // digest from the model).
+    int unsigned model_offset = capacity_bytes * state_idx;
+
+    int unsigned num_comparisons;
+    int unsigned num_mismatches;
+
+    // That digest had better have enough bytes to represent everything in observed. If not, there
+    // is a bug in our DV code.
+    if (dpi_digest.size() < model_offset + capacity_bytes) begin
+      `uvm_fatal(get_full_name(),
+                 $sformatf({"The state with index %0d should cover ",
+                            "indices %0d..%0d in dpi_digest (capacity is %0d). ",
+                            "But dpi_digest only has size %0d."},
+                           state_idx,
+                           model_offset,
+                           model_offset + capacity_bytes - 1,
+                           capacity_bytes * 8,
+                           dpi_digest.size()))
+    end
+
+    // Now work through the observed state values
+    for (int unsigned i = 0; i < BytesInObservedState; i++) begin
+      if (!observed.valid[i]) continue;
+
+      if (i < capacity_bytes) begin
+        bit [7:0] model_byte = dpi_digest[model_offset + i];
+        bit [7:0] seen_byte = observed.seen[i];
+
+        if (model_byte != seen_byte) begin
+          `uvm_warning(get_full_name(),
+                       $sformatf({"Mismatch at index %0d (offset %0d within state %0d). ",
+                                  "RTL value: 0x%0h; Model value: 0x%0h."},
+                                 model_offset + i, i, state_idx, seen_byte, model_byte))
+          num_mismatches++;
+        end
+      end else begin
+        // This is a read outside the state window, so should have evaluated to zero.
+        if (observed.seen[i]) begin
+          `uvm_warning(get_full_name(),
+                       $sformatf({"Mismatch at offset %0d (on state %0d). This is outside of ",
+                                  "the size given by capacity (%0d bytes) so the read value ",
+                                  "should have been zero but the RTL reported 0x%0h."},
+                                 i, state_idx, capacity_bytes, observed.seen[i]))
+          num_mismatches++;
+        end
+      end
+      num_comparisons++;
+
+      // Don't print more messages to the console after 16 mismatches.
+      if (num_mismatches >= 16) break;
+    end
+
+    // If there were any mismatches, report an error.
+    if (num_mismatches) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("Comparing digests found %0s%0d mismatch%0s.",
+                           (num_mismatches >= 16) ? "at least " : "",
+                           num_mismatches,
+                           (num_mismatches > 1) ? "s" : ""))
+    end
+
+    if (!num_comparisons) begin
+      `uvm_warning(get_full_name(),
+                   $sformatf("Digest check vacuous: no digest bytes were read for state %0d.",
+                             state_idx))
+    end
+
+    `uvm_info(get_full_name(),
+              $sformatf("Digest check compared %0d digest bytes for state %0d.",
+                        num_comparisons, state_idx),
+              UVM_HIGH)
+  endfunction
+
+  // Calculate the capacity (in bits) for a given Keccak strength
+  static function int unsigned strength_to_capacity(sha3_pkg::keccak_strength_e s);
+    case (s)
+      sha3_pkg::L128: return 1344;
+      sha3_pkg::L224: return 1152;
+      sha3_pkg::L256: return 1088;
+      sha3_pkg::L384: return  832;
+      sha3_pkg::L512: return  576;
+      default: begin
+        `uvm_fatal_context("strength_to_capacity",
+                           $sformatf("Unknown strength: %0d", s),
+                           uvm_root::get())
+      end
+    endcase
+  endfunction
+
+  // Calculate the requested digest length
   virtual function void get_digest_len_and_xof(ref int output_len, ref bit xof_en,
                                                ref bit [7:0] msg[$]);
+    int unsigned capacity_bytes = strength_to_capacity(strength) / 8;
+
     xof_en = 0;
     case (hash_mode)
       // For SHA3 hashes, the output length is the same as the security strength.
       sha3_pkg::Sha3: begin
-        case (strength)
-          sha3_pkg::L224: begin
-            output_len = 224 / 8; // 28
-          end
-          sha3_pkg::L256: begin
-            output_len = 256 / 8; // 32
-          end
-          sha3_pkg::L384: begin
-            output_len = 384 / 8; // 48
-          end
-          sha3_pkg::L512: begin
-            output_len = 512 / 8; // 64
-          end
-          default: begin
-            `uvm_fatal(`gfn, $sformatf("strength[%0s] is not allowed for sha3", strength.name()))
-          end
-        endcase
+        if (!(strength inside {sha3_pkg::L224, sha3_pkg::L256,
+                               sha3_pkg::L384, sha3_pkg::L512})) begin
+          `uvm_fatal(`gfn, $sformatf("strength[%0s] is not allowed for sha3", strength.name()))
+        end
+        output_len = capacity_bytes;
       end
-      // For Shake hashes, the output length isn't encoded anywhere,
-      // so we just return the length of the state digest array.
+      // For SHAKE hashes, the output length isn't encoded anywhere, so we just return the amount
+      // that has been seen (and thus needs consuming from a model for comparison). To do this,
+      // count the number of states that have been seen (1 + m_observed_states.size()) and multiply
+      // by the capacity in bytes.
       sha3_pkg::Shake: begin
-        output_len = digest_share0.size();
+        output_len = (1 + m_observed_states.size()) * capacity_bytes;
       end
       // CShake is where things get more interesting.
       // We need to essentially decode the encoded output length that is
@@ -1101,7 +1247,7 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         if (num_encoded_byte == 1 && full_len == 0) begin
           xof_en = 1;
           // can't set  the output length to 0, so we fall back to the Shake behavior here
-          output_len = digest_share0.size();
+          output_len = $size(digest_seen);
         end else begin
           output_len = full_len / 8;
         end
