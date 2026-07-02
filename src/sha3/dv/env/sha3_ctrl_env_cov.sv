@@ -19,7 +19,6 @@
     xof_en:       coverpoint xof; \
     strength:     coverpoint kstrength; \
     mode:         coverpoint kmode; \
-    key_len:      coverpoint key; \
     msg_endian:   coverpoint msg_endianness; \
     state_endian: coverpoint state_endianness; \
 
@@ -48,7 +47,6 @@
 covergroup config_masked_cg with function sample(bit kmac, bit xof,
                                                  sha3_pkg::keccak_strength_e kstrength,
                                                  sha3_pkg::sha3_mode_e kmode,
-                                                 kmac_pkg::key_len_e key,
                                                  bit msg_endianness,
                                                  bit state_endianness,
                                                  kmac_pkg::entropy_mode_e entr_mode,
@@ -61,7 +59,7 @@ covergroup config_masked_cg with function sample(bit kmac, bit xof,
 
   // cross the various configuration settings
 
-  kmac_cross: cross kmac_en, xof_en, strength, key_len, msg_endian,
+  kmac_cross: cross kmac_en, xof_en, strength, msg_endian,
                     state_endian, entropy_mode, entropy_fast_process {
     `XOF_CROSS_CG(strength, binsof(kmac_en) intersect {1})
   }
@@ -90,14 +88,13 @@ endgroup
 covergroup config_unmasked_cg with function sample(bit kmac, bit xof,
                                                    sha3_pkg::keccak_strength_e kstrength,
                                                    sha3_pkg::sha3_mode_e kmode,
-                                                   kmac_pkg::key_len_e key,
                                                    bit msg_endianness,
                                                    bit state_endianness);
   `COMMON_CFG_CGS
 
   // cross the various configuration settings
 
-  kmac_cross: cross kmac_en, xof_en, strength, key_len, msg_endian, state_endian {
+  kmac_cross: cross kmac_en, xof_en, strength, msg_endian, state_endian {
     `XOF_CROSS_CG(strength, binsof(kmac_en) intersect {1})
   }
 
@@ -322,18 +319,17 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
                            bit xof,
                            sha3_pkg::keccak_strength_e kstrength,
                            sha3_pkg::sha3_mode_e kmode,
-                           kmac_pkg::key_len_e key_len,
                            bit msg_endianness,
                            bit state_endianness,
                            kmac_pkg::entropy_mode_e entropy_mode,
                            bit fast_entropy);
 
     if (cfg.enable_masking) begin
-      config_masked_cg.sample(kmac, xof, kstrength, kmode, key_len, msg_endianness,
+      config_masked_cg.sample(kmac, xof, kstrength, kmode, msg_endianness,
                               state_endianness, entropy_mode,
                               fast_entropy);
     end else begin
-      config_unmasked_cg.sample(kmac, xof, kstrength, kmode, key_len,
+      config_unmasked_cg.sample(kmac, xof, kstrength, kmode,
                                 msg_endianness, state_endianness);
     end
   endfunction
