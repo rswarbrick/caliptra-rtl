@@ -21,9 +21,6 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
   // Skip read check for some error test case
   bit skip_read_check = 0;
 
-  // Tracks if a test invalidated the sideloading key.
-  bit key_invalidated = 0;
-
   // Tracks if a sha3 sw control error is expected to occur.
   bit expect_sha3_sw_ctrl_err = 0;
 

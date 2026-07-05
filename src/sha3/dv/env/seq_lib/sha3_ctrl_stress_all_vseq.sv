@@ -11,7 +11,6 @@ class sha3_ctrl_stress_all_vseq extends sha3_ctrl_base_vseq;
     "sha3_ctrl_smoke_vseq",
     "sha3_ctrl_long_msg_and_output_vseq",
     "sha3_ctrl_burst_write_vseq",
-    "sha3_ctrl_sideload_vseq",
     // Do not include sha3 or shake test vectors as they require a specific value for a shared
     // plusarg - excluding them does not detract much from the stress_all test
     "sha3_ctrl_test_vectors_kmac_vseq",

@@ -104,7 +104,6 @@ package sha3_ctrl_env_pkg;
     KmacModeLSB = 4,
     KmacModeMSB = 5, KmacMsgEndian = 8,
     KmacStateEndian = 9,
-    KmacSideload = 12,
     KmacEntropyModeLSB = 16,
     KmacEntropyModeMSB = 17,
     KmacFastEntropy = 19,

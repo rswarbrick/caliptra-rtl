@@ -51,10 +51,6 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
   // 1: convert state to big endian
   rand bit state_endian;
 
-  // set to provide the KMAC with a key through the sideload interface.
-  // does not control whether the cfg.sideload field is set.
-  rand bit provide_sideload_key;
-
   // So we use a static entropy mode value to hold the same mode through the whole test,
   // and constrain `entropy_mode` accordingly.
   kmac_pkg::entropy_mode_e static_entropy_mode = EntropyModeSw;
@@ -676,7 +672,6 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
             $sformatf("output_len %0d\n", output_len),
             $sformatf("msg_endian: %0b\n", msg_endian),
             $sformatf("state_endian: %0b\n", state_endian),
-            $sformatf("provide_sideload_key: %0b\n", provide_sideload_key),
             $sformatf("fname_arr: %0p\n", fname_arr),
             $sformatf("fname: %0s\n", str_utils_pkg::bytes_to_str(fname_arr)),
             $sformatf("custom_str_arr: %0p\n", custom_str_arr),

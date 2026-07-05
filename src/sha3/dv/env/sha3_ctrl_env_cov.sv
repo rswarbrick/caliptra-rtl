@@ -193,19 +193,6 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     state_mask_share_cross: cross share, state_read_mask;
   endgroup
 
-  covergroup sideload_cg with function sample(bit en_sideload, bit in_kmac, bit app_keymgr);
-    sideload:       coverpoint en_sideload;
-    kmac_mode:      coverpoint in_kmac;
-    in_app_keymgr:  coverpoint app_keymgr;
-
-    sideload_cross: cross sideload, kmac_mode, in_app_keymgr {
-      bins sw_kmac_valid_sideload   = binsof(sideload) intersect {1} && binsof(kmac_mode);
-      bins sw_kmac_invalid_sideload = binsof(sideload) intersect {0} && binsof(kmac_mode);
-      bins app_valid_sideload       = binsof(sideload) intersect {1} && binsof(in_app_keymgr);
-      bins app_invalid_sideload     = binsof(sideload) intersect {0} && binsof(in_app_keymgr);
-    }
-  endgroup
-
   covergroup error_cg with function sample(kmac_pkg::err_code_e kmac_err,
                                            kmac_pkg::kmac_cmd_e kcmd,
                                            sha3_pkg::sha3_mode_e kmode,
@@ -361,7 +348,6 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     msgfifo_level_cg = new();
     sha3_status_cg = new();
     state_read_mask_cg = new();
-    sideload_cg = new();
     error_cg = new();
     entropy_timer_cg = new();
     intr_cg = new();
