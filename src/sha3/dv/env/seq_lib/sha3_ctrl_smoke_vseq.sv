@@ -176,14 +176,6 @@ class sha3_ctrl_smoke_vseq extends sha3_ctrl_base_vseq;
         if (cfg.under_reset) return;
         read_digest_chunk(KMAC_STATE_SHARE1_BASE, keccak_block_size, share1);
         if (cfg.under_reset) return;
-      end else begin
-        // If we don't read out the state window again, wait a few clocks before dropping the
-        // sideload key (if applicable).
-        // TODO: This delay must be at least the rsp_delay_max from the app agent config. Otherwise
-        // the key can get invalidated before the response arrives which results in an error. We
-        // should change this that we wait until the response actually has arrived.
-        cfg.clk_rst_vif.wait_clks_or_rst(10);
-        if (cfg.under_reset) return;
       end
     end
 
