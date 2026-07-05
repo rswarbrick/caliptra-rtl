@@ -316,6 +316,19 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         msgfifo_access = 1'b1;
         msgfifo_txn_idx = m_ahb_req_counter;
       end
+
+      // If this is a request to read the STATUS register, take a snapshot now of the values we
+      // expect for sha3_idle, sha3_absorb and sha3_squeeze. When the register transaction
+      // completes, we'll check the value matches (in on_reg_txn)
+      if (!bus_req.m_write && bus_req.m_addr == ral.kmac_core.STATUS.get_offset()) begin
+        if (!ral.kmac_core.STATUS.sha3_idle.predict(.value(sha3_idle), .kind(UVM_PREDICT_READ)))
+          `uvm_fatal(get_full_name(), "Failed to predict STATUS.sha3_idle")
+        if (!ral.kmac_core.STATUS.sha3_absorb.predict(.value(sha3_absorb), .kind(UVM_PREDICT_READ)))
+          `uvm_fatal(get_full_name(), "Failed to predict STATUS.sha3_absorb")
+        if (!ral.kmac_core.STATUS.sha3_squeeze.predict(.value(sha3_squeeze),
+                                                       .kind(UVM_PREDICT_READ)))
+          `uvm_fatal(get_full_name(), "Failed to predict STATUS.sha3_squeeze")
+      end
     end
 
     // Increment the number of requests that have been seen
@@ -557,6 +570,78 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
                                  kmac_cmd))
           end
         endcase
+      end
+    end else if (register == ral.kmac_core.STATUS) begin
+      if (!txn.m_request.m_write) begin
+        // This is a read of the STATUS register. We took a snapshot of our expected value for the
+        // sha3_idle, sha3_absorb and sha3_squeeze fields when we saw the request. We have *not*
+        // pre-populated the register model with predictions for the fifo fields (fifo_depth,
+        // fifo_empty, fifo_full), so we will start by looking at them by hand.
+
+        bit [31:0] rdata = txn.m_response.m_rdata;
+        bit [4:0] fifo_depth_seen = ((rdata >> ral.kmac_core.STATUS.fifo_depth.get_lsb_pos()) &
+                                     ((1 << 5) - 1));
+        bit fifo_empty_seen = (rdata >> ral.kmac_core.STATUS.fifo_empty.get_lsb_pos()) & 1;
+        bit fifo_full_seen = (rdata >> ral.kmac_core.STATUS.fifo_full.get_lsb_pos()) & 1;
+
+        // Check that the empty/full status flags are consistent with the depth.
+        //
+        //  - The flags fifo_empty_seen and fifo_full_seen can't both be true.
+        //  - If fifo_empty_seen is true then the depth should be zero.
+        //  - If fifo_full_seen is true then the depth should be KMAC_FIFO_DEPTH.
+        //  - If neither is true then the depth should be strictly less than KMAC_FIFO_DEPTH, but we
+        //    don't also require that the depth is positive. This is discussed in OpenTitan issue
+        //    #14286.
+        if (fifo_empty_seen) begin
+          if (fifo_full_seen) begin
+            `uvm_error(get_full_name(), "STATUS reported the fifo to be both empty and full.")
+          end
+          if (fifo_depth_seen > 0) begin
+            `uvm_error(get_full_name(),
+                       $sformatf("STATUS reported fifo empty but with a depth of %0d.",
+                                 fifo_depth_seen))
+          end
+        end else if (fifo_full_seen) begin
+          if (fifo_depth_seen != KMAC_FIFO_DEPTH) begin
+            `uvm_error(get_full_name(),
+                       $sformatf({"STATUS reported fifo full but with a depth of %0d ",
+                                  "(KMAC_FIFO_DEPTH = %0d)"},
+                                 fifo_depth_seen, KMAC_FIFO_DEPTH))
+          end
+        end else begin
+          if (fifo_depth_seen >= KMAC_FIFO_DEPTH) begin
+            `uvm_error(get_full_name(),
+                       $sformatf({"STATUS didn't report fifo full, but reported a depth of %0d ",
+                                  "(KMAC_FIFO_DEPTH = %0d)"},
+                                 fifo_depth_seen, KMAC_FIFO_DEPTH))
+          end
+        end
+
+        // Check that the other fields of the register are as predicted (knocking out the bits in
+        // status_mask, which are all the bits corresponding to the fifo fields above.
+        if ((rdata ^ ral.kmac_core.STATUS.get_mirrored_value()) & ~status_mask) begin
+          bit [31:0]     masked_seen = rdata & ~status_mask;
+          uvm_reg_data_t masked_expected = ral.kmac_core.STATUS.get_mirrored_value() & ~status_mask;
+
+          `uvm_error(get_full_name(),
+                     $sformatf({"Unexpected value of STATUS. After masking out the fifo bits, we ",
+                                "expect 0x%0h but just read 0x%0h."},
+                               masked_expected, masked_seen))
+        end
+
+        // Finally update functional coverage with the STATUS value we just read.
+        if (cfg.en_cov) begin
+          bit idle_seen = (rdata >> ral.kmac_core.STATUS.sha3_idle.get_lsb_pos()) & 1;
+          bit absorb_seen = (rdata >> ral.kmac_core.STATUS.sha3_absorb.get_lsb_pos()) & 1;
+          bit squeeze_seen = (rdata >> ral.kmac_core.STATUS.sha3_squeeze.get_lsb_pos()) & 1;
+
+          cov.msgfifo_level_cg.sample(fifo_empty_seen,
+                                      fifo_full_seen,
+                                      fifo_depth_seen,
+                                      hash_mode,
+                                      kmac_en);
+          cov.sha3_status_cg.sample(idle_seen, absorb_seen, squeeze_seen);
+        end
       end
     end
   endfunction
