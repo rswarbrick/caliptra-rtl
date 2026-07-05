@@ -411,6 +411,13 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // Called with a complete, successful monitored bus transaction item and the register that it
   // addressed.
   function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
+    // If this was a register read we probably want to check the value matches the prediction. We
+    // will perform the check at the end of this function.
+    //
+    // However, there are a few registers where this isn't desired (maybe the register can't be
+    // modelled). To represent this, code can clear the do_read_check flag.
+    bit do_read_check = 1;
+
     if (register == ral.kmac_core.INTR_STATE) begin
       // On a read of the INTR_STATE register when coverage is enabled, update some covergroups with
       // the enable bits that we have seen and interrupt pins that were asserted.
@@ -425,6 +432,9 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           cov.intr_pins_cg.sample(i, intr_pins[i]);
         end
       end
+
+      // The value read from INTR_STATE isn't currently predicted in the register model.
+      do_read_check = 0;
     end else if (register == ral.kmac_core.INTR_TEST) begin
       // On a write to the INTR_TEST register, update the prediction of INTR_STATE to match the bits
       // that are being set.
@@ -643,6 +653,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           cov.sha3_status_cg.sample(idle_seen, absorb_seen, squeeze_seen);
         end
       end
+
+      // The check above replaces the check against the predicted value of the register
+      do_read_check = 0;
+
     end else if (register == ral.kmac_core.ERR_CODE) begin
       if (!txn.m_request.m_write) begin
         import kmac_pkg::err_t;
@@ -667,6 +681,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
                                  ral.kmac_core.ERR_CODE.get_mirrored_value() & ~ignored_mask,
                                  seen & ~ignored_mask))
           end
+
+          // The check we just did is almost the one we'd get from do_read_check=1, except that it
+          // squashes two bits that aren't modelled.
+          do_read_check = 0;
+
         end else if ((seen.code == sha3_pkg::ErrSha3SwControl) &&
                      cfg.expect_sha3_sw_ctrl_err) begin
           // A fault was injected into the sha3 done signal and bits 6:3 of the seen.info field
@@ -677,6 +696,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
                        $sformatf({"When we expect a SW ctrl error, seen.info[6:3] is ",
                                   "0b%0b: %0s."},
                                  seen.info[6:3], as_mubi.name()))
+
+            // The precise value of the register isn't modelled in this situation: just that a
+            // "done" signal should have been corrupted. Don't check the rest of the register.
+            do_read_check = 0;
           end else begin
             // If a fault was injected to the SHA3 done signal, the resulting error should be
             // cleared now.
@@ -710,6 +733,34 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
             // If all is well, store the updated prefix
             prefix[prefix_idx] = txn.m_request.m_wdata[31:0];
           end
+        end
+      end
+    end
+
+    if (!txn.m_request.m_write) begin
+      // This is a read transaction. There are a couple of extra situations where we need to disable
+      // the read check.
+
+      // If do_cycle_accurate_check is false, we don't necessarily predict INTR_STATE or STATUS in
+      // the register model.
+      if (!cfg.do_cycle_accurate_check &&
+          register inside {ral.kmac_core.INTR_STATE, ral.kmac_core.STATUS}) begin
+        do_read_check = 0;
+      end
+
+      // If skip_read_check is true, we don't predict reads from the ERR_CODE register.
+      if (cfg.skip_read_check && register == ral.kmac_core.ERR_CODE) begin
+        do_read_check = 0;
+      end
+
+      // If do_read_check has not been cleared, we should check the register prediction was correct.
+      if (do_read_check) begin
+        if (register.get_mirrored_value() != txn.m_response.m_rdata) begin
+          `uvm_error(get_full_name(),
+                     $sformatf("Mismatch when reading %0s. Prediction was 0x%0h but we saw 0x%0h.",
+                               register.get_name(),
+                               register.get_mirrored_value(),
+                               txn.m_response.m_rdata))
         end
       end
     end
