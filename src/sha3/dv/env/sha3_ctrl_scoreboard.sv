@@ -643,6 +643,47 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           cov.sha3_status_cg.sample(idle_seen, absorb_seen, squeeze_seen);
         end
       end
+    end else if (register == ral.kmac_core.ERR_CODE) begin
+      if (!txn.m_request.m_write) begin
+        import kmac_pkg::err_t;
+
+        // If this is the result of reading the ERR_CODE register, consider the 32b read_data with
+        // type kmac_pkg::err_t.
+        err_t seen = err_t'(txn.m_response.m_rdata);
+
+        if (seen.code == ErrSwCmdSequence) begin
+          // If this is an error that reports an out-of-sequence command, we should expect it to
+          // match our prediction except that we want to ignore the kmac_state FSM information (two
+          // bits in the info field, starting from bit kmac_st_idx). This state can't be precisely
+          // predicted because the SCB doesn't know the SHA state in which the error happened.
+          err_t ignored_mask = '0;
+          ignored_mask.info[kmac_st_idx +: 2] = 2'b11;
+
+          if ((seen ^ ral.kmac_core.ERR_CODE.get_mirrored_value()) & ~ignored_mask) begin
+            `uvm_error(get_full_name(),
+                       $sformatf({"ERR_CODE does not match the prediction. ",
+                                  "Ignoring kmac_state, the prediction is 0x%0h ",
+                                  "and the rdata was 0x%0h."},
+                                 ral.kmac_core.ERR_CODE.get_mirrored_value() & ~ignored_mask,
+                                 seen & ~ignored_mask))
+          end
+        end else if ((seen.code == sha3_pkg::ErrSha3SwControl) &&
+                     cfg.expect_sha3_sw_ctrl_err) begin
+          // A fault was injected into the sha3 done signal and bits 6:3 of the seen.info field
+          // should not be a valid mubi.
+          if (seen.info[6:3] inside {prim_mubi_pkg::MuBi4False, prim_mubi_pkg::MuBi4True}) begin
+            prim_mubi_pkg::mubi4_t as_mubi = prim_mubi_pkg::mubi4_t'(seen.info[6:3]);
+            `uvm_error(get_full_name(),
+                       $sformatf({"When we expect a SW ctrl error, seen.info[6:3] is ",
+                                  "0b%0b: %0s."},
+                                 seen.info[6:3], as_mubi.name()))
+          end else begin
+            // If a fault was injected to the SHA3 done signal, the resulting error should be
+            // cleared now.
+            cfg.expect_sha3_sw_ctrl_err = 0;
+          end
+        end
+      end
     end
   endfunction
 
