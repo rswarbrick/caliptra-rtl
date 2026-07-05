@@ -684,6 +684,34 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
           end
         end
       end
+    end else begin
+      // register is not any of the list above. Is it one of the prefix registers? If so, we want to
+      // update our prefix variable to match.
+      //
+      // The auto-generated register model doesn't have these registers in an array so the easiest
+      // way to check is to see whether the name of the register starts with "PREFIX_" and, if so,
+      // to parse the part afterwards.
+      if (txn.m_request.m_write) begin
+        string reg_name = register.get_name();
+
+        if (str_starts_with(reg_name, "PREFIX_")) begin
+          // If the register is called "PREFIX_xyz", parse the "xyz" part as an integer. $sscanf
+          // will return 1 if it managed.
+          int prefix_idx;
+          if ($sscanf(reg_name.substr(7, reg_name.len() - 1), "%0d", prefix_idx)) begin
+            // As a basic check, make sure that we got an index in 0..KMAC_NUM_PREFIX_WORDS-1 (if
+            // not, we must have a very strange register name!)
+            if (prefix_idx < 0 || prefix_idx >= KMAC_NUM_PREFIX_WORDS) begin
+              `uvm_fatal(get_full_name(),
+                         $sformatf("Bogus prefix index. Register name was %0s, giving idx %0d.",
+                                   reg_name, prefix_idx))
+            end
+
+            // If all is well, store the updated prefix
+            prefix[prefix_idx] = txn.m_request.m_wdata[31:0];
+          end
+        end
+      end
     end
   endfunction
 
