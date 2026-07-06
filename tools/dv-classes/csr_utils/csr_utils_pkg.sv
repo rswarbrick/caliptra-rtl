@@ -855,6 +855,7 @@ package csr_utils_pkg;
   endfunction
 
   // sources
+  `include "field_warning_demoter.svh"
   `include "csr_base_seq.sv"
   `include "csr_hw_reset_seq.sv"
   `include "csr_seq_lib.sv"

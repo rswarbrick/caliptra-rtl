@@ -57,6 +57,10 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
   // upper bound).
   int unsigned max_num_test_csrs;
 
+  // A uvm_report_catcher that will demote warnings about field access while the sequence is
+  // running.
+  field_warning_demoter m_field_access_demoter;
+
   // A queue holding every register across the blocks in models.
   protected uvm_reg all_csrs[$];
 
@@ -107,6 +111,7 @@ endclass
 
 function csr_base_seq::new (string name="");
   super.new(name);
+  m_field_access_demoter = new("m_field_access_demoter");
 endfunction
 
 task csr_base_seq::pre_start();
@@ -117,12 +122,18 @@ task csr_base_seq::pre_start();
   if (test_csrs.size() == 0) begin
     set_csr_test_range();
   end
+
+  // Demote warnings about access to individual fields while this sequence is running.
+  uvm_report_cb::add(null, m_field_access_demoter);
 endtask
 
 task csr_base_seq::post_start();
   super.post_start();
   wait_no_outstanding_access();
   test_csrs.delete();
+
+  // Restore warnings about access to individual fields again, now the sequence has finished.
+  uvm_report_cb::delete(null, m_field_access_demoter);
 endtask
 
 function void csr_base_seq::set_csr_test_range();

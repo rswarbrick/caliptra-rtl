@@ -15,6 +15,7 @@ filesets:
       - csr_base_seq.sv: {is_include_file: true}
       - csr_hw_reset_seq.sv: {is_include_file: true}
       - csr_seq_lib.sv: {is_include_file: true}
+      - field_warning_demoter.svh: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:
