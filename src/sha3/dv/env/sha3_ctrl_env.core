@@ -35,6 +35,7 @@ filesets:
       - seq_lib/sha3_ctrl_burst_write_vseq.sv: {is_include_file: true}
       - seq_lib/sha3_ctrl_stress_all_vseq.sv: {is_include_file: true}
       - seq_lib/sha3_ctrl_intr_test_vseq.svh: {is_include_file: true}
+      - seq_lib/sha3_ctrl_csr_vseq.svh: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:
