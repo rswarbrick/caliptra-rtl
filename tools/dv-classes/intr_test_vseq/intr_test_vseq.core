@@ -1,0 +1,19 @@
+CAPI=2:
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:intr_test_vseq:0.1"
+description: "Virtual sequence to check INTR_TEST register behaviour"
+filesets:
+  files_dv:
+    depend:
+      - lowrisc:dv:dv_lib
+    files:
+      - intr_test_vseq_pkg.sv
+      - intr_test_vseq.svh: {is_include_file: true}
+    file_type: systemVerilogSource
+
+targets:
+  default:
+    filesets:
+      - files_dv
