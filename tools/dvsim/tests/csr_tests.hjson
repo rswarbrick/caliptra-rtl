@@ -11,7 +11,7 @@
   run_modes: [
     {
       name: csr_tests_mode
-      uvm_test_seq: "{name}_common_vseq"
+      uvm_test_seq: "{name}_csr_vseq"
       run_opts: ["+en_scb=0"]
     }
   ]
