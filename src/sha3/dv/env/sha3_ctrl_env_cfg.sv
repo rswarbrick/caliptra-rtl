@@ -133,4 +133,29 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
     ral.kmac_core.set_default_hdl_path(std_kind.name());
   endfunction
 
+  // This extends dv_base_env_cfg::post_build_ral_settings to add some CSR exclusions to the (one
+  // and only) uvm_reg_block.
+  protected virtual function void post_build_ral_settings(dv_base_reg_block ral);
+    sha3_ctrl_dv_reg ral_;
+
+    super.post_build_ral_settings(ral);
+
+    if (!$cast(ral_, ral)) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"Cannot set up exclusions for register block %0s: ",
+                            "it is not a sha3_ctrl_dv_reg."},
+                           ral.get_name()))
+    end
+
+    // The auto-generated CSR test should leave INTR_STATE untouched and not write to INTR_TEST
+    // (except in the HwReset test). The registers have their own testing in
+    // sha3_ctrl_intr_test_vseq.
+    ral_.kmac_core.INTR_STATE.set_csr_test_exclusions(CsrExclAll, CsrAllTests);
+    ral_.kmac_core.INTR_TEST.set_csr_test_exclusions(CsrExclWrite, CsrNonInitTests);
+
+    // The CMD register should not be written by automated register tests: the state space is
+    // explored by running commands in more contrained sequences.
+    ral_.kmac_core.CMD.set_csr_test_exclusions(CsrExclWrite, CsrAllTests);
+  endfunction
+
 endclass
