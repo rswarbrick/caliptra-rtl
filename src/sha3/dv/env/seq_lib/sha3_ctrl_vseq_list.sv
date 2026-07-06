@@ -10,3 +10,4 @@
 `include "sha3_ctrl_test_vectors_shake_vseq.sv"
 `include "sha3_ctrl_burst_write_vseq.sv"
 `include "sha3_ctrl_stress_all_vseq.sv"
+`include "sha3_ctrl_intr_test_vseq.svh"

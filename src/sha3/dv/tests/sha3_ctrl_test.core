@@ -11,6 +11,7 @@ filesets:
     files:
       - sha3_ctrl_test_pkg.sv
       - sha3_ctrl_base_test.sv: {is_include_file: true}
+      - sha3_ctrl_intr_test_test.svh: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:
