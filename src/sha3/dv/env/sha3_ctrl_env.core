@@ -14,6 +14,7 @@ filesets:
       - caliptra:compile_yml:sha3_ctrl
       - lowrisc:dv:ahb_agent
       - lowrisc:dv:reset_agent
+      - lowrisc:dv:intr_test_vseq
       - caliptra:dv:sha3_ctrl_ral
     files:
       - sha3_ctrl_env_pkg.sv
@@ -33,6 +34,7 @@ filesets:
       - seq_lib/sha3_ctrl_test_vectors_shake_vseq.sv: {is_include_file: true}
       - seq_lib/sha3_ctrl_burst_write_vseq.sv: {is_include_file: true}
       - seq_lib/sha3_ctrl_stress_all_vseq.sv: {is_include_file: true}
+      - seq_lib/sha3_ctrl_intr_test_vseq.svh: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:

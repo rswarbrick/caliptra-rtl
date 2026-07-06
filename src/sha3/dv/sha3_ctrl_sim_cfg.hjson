@@ -22,8 +22,7 @@
 
   // Import additional common sim cfg files.
   import_cfgs: ["{proj_root}/tools/dvsim/common_sim_cfg.hjson",
-                "{proj_root}/tools/dvsim/tests/csr_tests.hjson",
-                "{proj_root}/tools/dvsim/tests/intr_test.hjson"]
+                "{proj_root}/tools/dvsim/tests/csr_tests.hjson"]
 
   // Add additional tops for simulation.
   sim_tops: ["kmac_cov_bind"]
@@ -136,6 +135,13 @@
     {
       name: sha3_ctrl_stress_all_with_rand_reset
       run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0"]
+      reseed: 10
+    }
+    {
+      name: "sha3_ctrl_intr_test"
+      build_mode: "cover_reg_top"
+      uvm_test: "sha3_ctrl_intr_test_test"
+      uvm_test_seq: "sha3_ctrl_intr_test_vseq"
       reseed: 10
     }
   ]

@@ -12,4 +12,5 @@ package sha3_ctrl_test_pkg;
   import dv_lib_pkg::dv_base_test;
 
   `include "sha3_ctrl_base_test.sv"
+  `include "sha3_ctrl_intr_test_test.svh"
 endpackage
