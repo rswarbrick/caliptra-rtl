@@ -183,7 +183,9 @@ class dv_base_vseq #(type RAL_T               = dv_base_reg_block,
     end
 
     // Get csr_test_type from plusarg
-    void'($value$plusargs("csr_%0s", csr_test_type));
+    if (!$value$plusargs("csr_%0s", csr_test_type)) begin
+      `uvm_fatal(get_full_name(), "There is no plusarg of the form +csr_*")
+    end
 
     // run the csr seq
     for (int i = 1; i <= num_times; i++) begin
