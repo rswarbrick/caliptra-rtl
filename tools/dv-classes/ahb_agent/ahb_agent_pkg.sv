@@ -74,6 +74,7 @@ package ahb_agent_pkg;
   `include "seq_lib/ahb_transfer_seq.svh"
   `include "seq_lib/ahb_single_read_seq.svh"
   `include "seq_lib/ahb_single_write_seq.svh"
+  `include "seq_lib/ahb_read_write_seq.svh"
   `include "seq_lib/ahb_mgr_register_layer_vseq.svh"
 
   `include "ahb_mgr_agent.svh"
