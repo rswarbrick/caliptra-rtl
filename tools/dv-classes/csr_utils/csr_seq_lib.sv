@@ -79,7 +79,12 @@ class csr_write_seq extends csr_base_seq;
         foreach (str_kinds[j]) begin
           bkdr_reg_path_e enum_kind;
           // Convert string name to an enum
-          `DV_CHECK_FATAL(uvm_enum_wrapper#(bkdr_reg_path_e)::from_name(str_kinds[j], enum_kind))
+          if (!uvm_enum_wrapper#(bkdr_reg_path_e)::from_name(str_kinds[j], enum_kind)) begin
+            `uvm_fatal(get_full_name(),
+                       $sformatf({"Failed to convert the string \"%0s\" to a bkdr_reg_path_e. ",
+                                  "This is one of the path kinds from register %0s"},
+                                 str_kinds[j], test_csrs[i].get_full_name()))
+          end
 
           csr_poke(.ptr(test_csrs[i]), .value(wdata), .kind(enum_kind));
 
