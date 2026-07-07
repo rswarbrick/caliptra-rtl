@@ -588,4 +588,33 @@ class dv_base_reg extends uvm_reg;
   endtask
 
 
+  // Add an HDL path slice for this register, using a name compatible with bkdr_reg_path_e
+  //
+  // This uses uvm_reg::add_hdl_path_slice(), but is designed to use kinds compatible with the
+  // bkdr_reg_path_e enum.
+  function void add_path_slice(string          path,
+                               int unsigned    lsb,
+                               int unsigned    width,
+                               bkdr_reg_path_e kind);
+    add_hdl_path_slice(path, lsb, width, 0, kind.name());
+  endfunction
+
+  // Add a pair of HDL path slices for the committed and shadowed version of a shadowed register
+  function void add_shadowed_path_slices(string          committed_path,
+                                         string          shadowed_path,
+                                         int unsigned    lsb,
+                                         int unsigned    width);
+    add_path_slice(committed_path, lsb, width, BkdrRegPathRtl);
+    add_path_slice(shadowed_path,  lsb, width, BkdrRegPathRtlShadow);
+  endfunction
+
+  // Add a pair of HDL path slices for the committed and shadowed version of a register field that
+  // is implemented with prim_subreg_shadow.
+  function void add_prim_subreg_shadow_slices(string          prim_path,
+                                              int unsigned    lsb,
+                                              int unsigned    width);
+    string committed_path = {prim_path, ".committed_reg.q"};
+    string shadowed_path  = {prim_path, ".shadow_reg.q"};
+    add_shadowed_path_slices(committed_path, shadowed_path, lsb, width);
+  endfunction
 endclass
