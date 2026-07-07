@@ -53,7 +53,7 @@ class csr_write_seq extends csr_base_seq;
       dv_base_reg dv_csr;
       bit         backdoor;
       // check if parent block or register is excluded from write
-      if (is_excl(test_csrs[i], CsrExclWrite, CsrHwResetTest)) begin
+      if (reg_is_excluded(test_csrs[i], CsrExclWrite, CsrHwResetTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -126,7 +126,7 @@ class csr_rw_seq extends csr_base_seq;
       end
 
       // check if parent block or register is excluded from write
-      if (is_excl(test_csrs[i], CsrExclWrite, CsrRwTest)) begin
+      if (reg_is_excluded(test_csrs[i], CsrExclWrite, CsrRwTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -159,7 +159,6 @@ class csr_rw_seq extends csr_base_seq;
                               .blocking(0),
                               .compare(!external_checker),
                               .compare_vs_ral(1),
-                              .do_csr_field_rd_check(do_field_rd_check),
                               .csr_excl_type(CsrExclWriteCheck),
                               .csr_test_type(CsrRwTest));
 
@@ -195,8 +194,8 @@ class csr_bit_bash_seq extends csr_base_seq;
                 UVM_MEDIUM)
 
       // check if parent block or register is excluded from write
-      if (is_excl(test_csrs[i], CsrExclWrite, CsrBitBashTest) ||
-          is_excl(test_csrs[i], CsrExclWriteCheck, CsrBitBashTest)) begin
+      if (reg_is_excluded(test_csrs[i], CsrExclWrite, CsrBitBashTest) ||
+          reg_is_excluded(test_csrs[i], CsrExclWriteCheck, CsrBitBashTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite/WriteCheck exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -232,7 +231,8 @@ class csr_bit_bash_seq extends csr_base_seq;
     no_cmp_mask = 0;
 
     foreach (fields[j]) begin
-      int lsb, w, dc, no_cmp;
+      int               lsb, w, dc, no_cmp;
+      dv_base_reg_field dv_field;
 
       field_access = fields[j].get_access(csr.get_default_map());
       no_cmp = (fields[j].get_compare() == UVM_NO_CHECK);
@@ -245,16 +245,19 @@ class csr_bit_bash_seq extends csr_base_seq;
         default:                                   no_cmp = 0;
       endcase
 
-      // skip fields that are wr-excluded
-      if (is_excl(fields[j], CsrExclWrite, CsrBitBashTest)) begin
-        `uvm_info(`gtn, $sformatf("Skipping field %0s due to CsrExclWrite exclusion",
-                                  fields[j].get_full_name()), UVM_MEDIUM)
-        dc = 1;
-      end
+      if ($cast(dv_field, fields[j])) begin
+        // skip fields that are wr-excluded
+        if (!dv_field.included_in_csr_test(CsrExclWrite, CsrBitBashTest)) begin
+          `uvm_info(`gtn, $sformatf("Skipping field %0s due to CsrExclWrite exclusion",
+                                    fields[j].get_full_name()), UVM_MEDIUM)
+          dc = 1;
+        end
 
-      // ignore fields that are init or rd-excluded
-      no_cmp = is_excl(fields[j], CsrExclInitCheck, CsrBitBashTest) ||
-               is_excl(fields[j], CsrExclWriteCheck, CsrBitBashTest) ;
+        // ignore fields that are init or rd-excluded
+        no_cmp = !(dv_field.included_in_csr_test(CsrExclInitCheck, CsrBitBashTest) &&
+                   dv_field.included_in_csr_test(CsrExclWriteCheck, CsrBitBashTest));
+
+      end
 
       // Any unused bits below the LSB of this field?
       while (next_lsb < lsb) mode[next_lsb++] = "RO";
@@ -333,7 +336,7 @@ class csr_aliasing_seq extends csr_base_seq;
       uvm_reg_data_t wdata;
 
       // check if parent block or register is excluded
-      if (is_excl(test_csrs[i], CsrExclWrite, CsrAliasingTest)) begin
+      if (reg_is_excluded(test_csrs[i], CsrExclWrite, CsrAliasingTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -358,8 +361,8 @@ class csr_aliasing_seq extends csr_base_seq;
         uvm_reg_data_t compare_mask;
 
         // check if parent block or register is excluded
-        if (is_excl(all_csrs[j], CsrExclInitCheck, CsrAliasingTest) ||
-            is_excl(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest)) begin
+        if (reg_is_excluded(all_csrs[j], CsrExclInitCheck, CsrAliasingTest) ||
+            reg_is_excluded(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest)) begin
           `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclInit/WriteCheck exclusion",
                                     all_csrs[j].get_full_name()), UVM_HIGH)
           continue;

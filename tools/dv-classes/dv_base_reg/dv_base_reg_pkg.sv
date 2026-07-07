@@ -133,7 +133,6 @@ package dv_base_reg_pkg;
     return mask;
   endfunction
 
-  `include "csr_excl_item.sv"
   `include "dv_base_lockable_field_cov.sv"
   `include "dv_base_shadowed_field_cov.sv"
   `include "dv_base_reg_field.sv"

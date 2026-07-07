@@ -19,6 +19,13 @@ class dv_base_reg_field extends uvm_reg_field;
   local dv_base_reg_field regwen_fld;
   local dv_base_lockable_field_cov lockable_field_cov;
 
+  // Particular checks that should ignore this field in the register when running in a test that
+  // matches m_csr_test_excl.
+  local csr_excl_type_e m_csr_excl_type;
+
+  // Particular automated CSR tests where m_csr_excl_type applies to this field.
+  local csr_test_type_e m_csr_test_excl;
+
   // This is used for get_field_by_name
   string alias_name = "";
 
@@ -388,6 +395,11 @@ class dv_base_reg_field extends uvm_reg_field;
 
     // the field location for intr_state and intr_test should be the same
     return fields[get_lsb_pos()];
+  endfunction
+
+  // Return true if this field should be included in the given check in the given test
+  function bit included_in_csr_test(csr_excl_type_e excl_type, csr_test_type_e test_excl);
+    return !((excl_type & m_csr_excl_type) && (test_excl & m_csr_test_excl));
   endfunction
 
 endclass

@@ -26,8 +26,8 @@ class dv_base_reg_block extends uvm_reg_block;
   // name as {ip_name}_{alert_name}. Hence, we need this ip_name in reg_block
   local string ip_name;
 
-  // CSR exclusion object that holds exclusion tags for the sub-blocks, CSRs and fields.
-  protected csr_excl_item csr_excl;
+  // A bit-mask of the automated CSR tests that should not be used for this block
+  local bit [NUM_CSR_TESTS-1:0] excluded_csr_tests;
 
   // The address mask for the register block specific to a map. This will be (1 << K) - 1 for some
   // K. All relative offsets in the register block have addresses less than (1 << K), so an address
@@ -108,15 +108,9 @@ class dv_base_reg_block extends uvm_reg_block;
     return ip_name;
   endfunction
 
-  // Returns the CSR exclusion item attached to the block.
-  virtual function csr_excl_item get_excl_item();
-    return csr_excl;
-  endfunction
-
-  // Attach a CSR exclusion item to the block. Must be called before build() if the subclass build
-  // implementation needs to consult it (e.g. to propagate to sub-blocks).
-  virtual function void set_csr_excl(csr_excl_item excl);
-    csr_excl = excl;
+  // Extend excluded_csr_tests to contain all the tests in to_exclude.
+  function void exclude_csr_tests(bit [NUM_CSR_TESTS-1:0] to_exclude);
+    excluded_csr_tests |= to_exclude;
   endfunction
 
   function void set_unmapped_access_ok(bit ok);
@@ -553,6 +547,10 @@ class dv_base_reg_block extends uvm_reg_block;
 
   function bit get_en_dv_reg_cov();
     return en_dv_reg_cov;
+  endfunction
+
+  function bit [NUM_CSR_TESTS-1:0] get_excluded_csr_tests();
+    return excluded_csr_tests;
   endfunction
 
 endclass

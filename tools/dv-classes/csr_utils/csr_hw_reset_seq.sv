@@ -61,5 +61,7 @@ task csr_hw_reset_seq::test_one_csr(uvm_reg csr);
 endtask
 
 function bit csr_hw_reset_seq::csr_excluded(uvm_reg csr);
-  return is_excl(csr, CsrExclInitCheck, CsrHwResetTest);
+  dv_base_reg dv_reg;
+  if (!$cast(dv_reg, csr)) return 0;
+  return dv_reg.is_excluded_in_csr_test(CsrExclInitCheck, CsrHwResetTest);
 endfunction

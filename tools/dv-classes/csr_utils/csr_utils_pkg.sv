@@ -479,46 +479,31 @@ package csr_utils_pkg;
   // fields.
   // This task will skip read check if the CSR field is excluded.
   task automatic do_check_csr_or_field_rd(input uvm_reg         csr,
-                                          input bit             do_csr_field_rd_check = $urandom(),
                                           input bit             blocking = 0,
                                           input bit             compare = 1,
                                           input bit             compare_vs_ral = 1,
                                           input csr_excl_type_e csr_excl_type = CsrNoExcl,
-                                          input csr_test_type_e csr_test_type = CsrRwTest,
-                                          input csr_excl_item   csr_excl_item = get_excl_item(csr));
-    uvm_reg_data_t compare_mask;
+                                          input csr_test_type_e csr_test_type = CsrRwTest);
+    uvm_reg_data_t compare_mask = '1;
+    dv_base_reg    dv_reg;
 
     // Check if parent block or register is excluded from read-check
-    if (csr_excl_item != null && csr_excl_item.is_excl(csr, csr_excl_type, csr_test_type)) begin
+    if (reg_is_excluded(csr, csr_excl_type, csr_test_type)) begin
       `uvm_info($sformatf("%m"),
-                $sformatf("Skipping register %0s due to CsrExclWriteCheck exclusion",
-                          csr.get_full_name()), UVM_MEDIUM)
+                $sformatf("Skipping register %0s because of CSR exclusion", csr.get_full_name()),
+                UVM_MEDIUM)
       return;
     end
 
-    compare_mask = get_mask_excl_fields(csr, csr_excl_type, csr_test_type, csr_excl_item);
-
-    if (!do_csr_field_rd_check) begin
-      csr_rd_check(.ptr           (csr),
-                   .blocking      (blocking),
-                   .compare       (compare),
-                   .compare_vs_ral(compare_vs_ral),
-                   .compare_mask  (compare_mask));
-    end else begin
-      uvm_reg_field test_fields[$];
-      csr.get_fields(test_fields);
-      test_fields.shuffle();
-      foreach (test_fields[i]) begin
-        bit field_compare = 1;
-        if (csr_excl_item != null) begin
-          field_compare = !csr_excl_item.is_excl(test_fields[i], csr_excl_type, csr_test_type);
-        end
-        csr_rd_check(.ptr           (test_fields[i]),
-                     .blocking      (blocking),
-                     .compare       (field_compare && compare),
-                     .compare_vs_ral(compare_vs_ral));
-      end
+    if ($cast(dv_reg, csr)) begin
+      compare_mask = dv_reg.get_csr_test_mask(csr_excl_type, csr_test_type);
     end
+
+    csr_rd_check(.ptr           (csr),
+                 .blocking      (blocking),
+                 .compare       (compare),
+                 .compare_vs_ral(compare_vs_ral),
+                 .compare_mask  (compare_mask));
    endtask
 
   // Poll a csr or csr field continuously until its value is as expected.
@@ -732,25 +717,15 @@ package csr_utils_pkg;
     join
   endtask : mem_wr_sub
 
-  // Fields could be excluded from writes & reads - This function zeros out the excluded fields
+  // Return a mask that is only set for bits that should be included in checks
   function automatic uvm_reg_data_t get_mask_excl_fields(uvm_reg csr,
                                                          csr_excl_type_e csr_excl_type,
-                                                         csr_test_type_e csr_test_type,
-                                                         csr_excl_item m_csr_excl_item =
-                                                                       get_excl_item(csr));
-    uvm_reg_field flds[$];
-    csr.get_fields(flds);
-    get_mask_excl_fields = '1;
-
-    if (m_csr_excl_item != null) begin
-      foreach (flds[i]) begin
-        if (m_csr_excl_item.is_excl(flds[i], csr_excl_type, csr_test_type)) begin
-          csr_field_t fld_params = decode_csr_or_field(flds[i]);
-          `uvm_info($sformatf("%m"), $sformatf("Skipping field %0s due to %0s exclusion",
-                                    flds[i].get_full_name(), csr_excl_type.name()), UVM_HIGH)
-          get_mask_excl_fields &= ~(fld_params.mask << fld_params.shift);
-        end
-      end
+                                                         csr_test_type_e csr_test_type);
+    dv_base_reg dv_reg;
+    if ($cast(dv_reg, csr)) begin
+      return dv_reg.get_csr_test_mask(csr_excl_type, csr_test_type);
+    end else begin
+      return '1;
     end
   endfunction
 
@@ -758,47 +733,30 @@ package csr_utils_pkg;
   //
   // Some fields in the CSR may be excluded from writes. In that case, we need to revert those
   // fields to their mirrored values and write the rest of the fields with the given value.
-  function automatic uvm_reg_data_t get_csr_wdata_with_write_excl(
-      uvm_reg         csr,
-      uvm_reg_data_t  wdata,
-      csr_test_type_e csr_test_type,
-      csr_excl_item   m_csr_excl_item = get_excl_item(csr)
-  );
+  function automatic uvm_reg_data_t get_csr_wdata_with_write_excl(uvm_reg         csr,
+                                                                  uvm_reg_data_t  wdata,
+                                                                  csr_test_type_e csr_test_type);
     uvm_reg_field flds[$];
     csr.get_fields(flds);
 
     foreach (flds[i]) begin
-      if (m_csr_excl_item.is_excl(flds[i], CsrExclWrite, csr_test_type)) begin
-        `uvm_info($sformatf("%m"),
-                  $sformatf("Retain mirrored 0x%0h for field %0s due to CsrExclWrite exclusion",
-                            `gmv(flds[i]), flds[i].get_full_name()), UVM_MEDIUM)
-        wdata = get_csr_val_with_updated_field(flds[i], wdata, `gmv(flds[i]));
+      dv_base_reg_field fld;
+      if ($cast(fld, flds[i])) begin
+        if (!fld.included_in_csr_test(CsrExclAll, csr_test_type)) begin
+          int unsigned   lsb  = fld.get_lsb_pos();
+          uvm_reg_data_t mask = ((1 << fld.get_n_bits()) - 1) << lsb;
+          uvm_reg_data_t mirrored = fld.get_mirrored_value();
+
+          `uvm_info($sformatf("%m"),
+                    $sformatf("Retain mirrored 0x%0h for field %0s due to CsrExclWrite exclusion",
+                              mirrored, fld.get_full_name()),
+                    UVM_MEDIUM)
+
+          wdata = (wdata & ~mask) | (mirrored << lsb);
+        end
       end
     end
     return wdata;
-  endfunction
-
-  // Returns the CSR exclusion item associated with the provided object.
-  //
-  // If an exclusion item for the immediate block (parent of the CSR if ptr is a CSR or a field) is
-  // not found, it recurses through the block's ancestors to find an available exclusion item.
-  // arg ptr: An extension of one of dv_base_reg{, _block or _field} classes.
-  function automatic csr_excl_item get_excl_item(uvm_object ptr);
-    dv_base_reg_block blk;
-
-    // Attempt cast to blk. If it fails, then attempt to cast to CSR or field.
-    if (!$cast(blk, ptr)) begin
-      csr_field_t csr_or_fld = decode_csr_or_field(ptr);
-      `downcast(blk, csr_or_fld.csr.get_parent(), , , $sformatf("%m"))
-    end
-
-    // Recurse through block's ancestors.
-    do begin
-      csr_excl_item csr_excl = blk.get_excl_item();
-      if (csr_excl != null) return csr_excl;
-      `downcast(blk, blk.get_parent(), , , $sformatf("%m"))
-    end while (blk != null);
-    return null;
   endfunction
 
   // Clone a UVM address map
@@ -853,6 +811,31 @@ package csr_utils_pkg;
     return clone;
 
   endfunction
+
+  // Return true if the given check should be excluded in the given test for this register
+  //
+  // This is implemented here (rather than in dv_base_reg or dv_base_reg_block) so that it can
+  // support exclusions in a dv_base_reg that is in an otherwise-vanilla uvm_reg_block or in a
+  // vanilla uvm_reg that is in a dv_base_reg_block.
+  function bit reg_is_excluded(uvm_reg register,
+                               csr_excl_type_e csr_excl_type,
+                               csr_test_type_e csr_test_type);
+    dv_base_reg       dv_reg;
+    dv_base_reg_block dv_block;
+
+    if ($cast(dv_reg, register)) begin
+      if (dv_reg.is_excluded_in_csr_test(csr_excl_type, csr_test_type)) return 1;
+    end
+
+    if ($cast(dv_block, register.get_parent())) begin
+      if (csr_test_type & dv_block.get_excluded_csr_tests()) begin
+        return 1;
+      end
+    end
+
+    return 0;
+  endfunction
+
 
   // sources
   `include "field_warning_demoter.svh"

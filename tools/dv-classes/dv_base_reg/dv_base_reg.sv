@@ -19,6 +19,15 @@ class dv_base_reg extends uvm_reg;
   local string         update_err_alert_name;
   local string         storage_err_alert_name;
 
+  // Particular checks that should be excluded from automated CSR tests for this register.
+  //
+  // A check is excluded if it matches m_csr_excl_type and is running in a test that matches
+  // m_csr_test_excl.
+  local csr_excl_type_e m_csr_excl_type;
+
+  // Particular automated CSR tests where m_csr_excl_type applies to this register.
+  local csr_test_type_e m_csr_test_excl;
+
   // This should be set if the register can be affected by a write even if that write also causes an
   // error (because of an invalid mask, for example).
   //
@@ -587,6 +596,33 @@ class dv_base_reg extends uvm_reg;
     release_lock();
   endtask
 
+  function void set_csr_test_exclusions(csr_excl_type_e excl_type, csr_test_type_e test_type);
+    m_csr_excl_type = excl_type;
+    m_csr_test_excl = test_type;
+  endfunction
+
+  function bit is_excluded_in_csr_test(csr_excl_type_e excl_type, csr_test_type_e test_excl);
+    return (excl_type & m_csr_excl_type) && (test_excl & m_csr_test_excl);
+  endfunction
+
+  // Get the mask of fields that should be included in used in a check in this test
+  //
+  // This does not take m_csr_excl_type and m_csr_test_excl into account: it is only relevant if
+  // those class variables don't already disable the check for this register (which can be checked
+  // by is_excluded_in_csr_test)
+  function uvm_reg_data_t get_csr_test_mask(csr_excl_type_e excl_type, csr_test_type_e test_excl);
+    uvm_reg_data_t mask = '1;
+    foreach (m_fields[i]) begin
+      dv_base_reg_field fld;
+      if ($cast(fld, m_fields[i])) begin
+        if (!fld.included_in_csr_test(excl_type, test_excl)) begin
+          uvm_reg_data_t fld_mask = ((1 << fld.get_n_bits()) - 1) << fld.get_lsb_pos();
+          mask &= ~fld_mask;
+        end
+      end
+    end
+    return mask;
+  endfunction
 
   // Add an HDL path slice for this register, using a name compatible with bkdr_reg_path_e
   //

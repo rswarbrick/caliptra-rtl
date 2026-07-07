@@ -13,7 +13,6 @@ filesets:
       - lowrisc:prim:mubi_pkg
     files:
       - dv_base_reg_pkg.sv
-      - csr_excl_item.sv: {is_include_file: true}
       - dv_base_reg_field.sv: {is_include_file: true}
       - dv_base_reg.sv: {is_include_file: true}
       - dv_base_mem.sv: {is_include_file: true}

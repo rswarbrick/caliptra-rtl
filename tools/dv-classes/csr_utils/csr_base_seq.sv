@@ -97,12 +97,6 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
   // the comment about plusargs before the class.
   extern local function void set_csr_test_range();
 
-  // Return true if this is a CSR or field that has been excluded from the test described in
-  // csr_test_type by some exclusion (that ultimately came from the hjson register description).
-  extern function bit is_excl(uvm_object obj,
-                              csr_excl_type_e csr_excl_type,
-                              csr_test_type_e csr_test_type);
-
   // Return true if this CSR should be excluded by the current sequence. The base class always
   // returns false, but this allows more specialised sequences to work over more evenly sized
   // chunks.
@@ -299,17 +293,6 @@ function void csr_base_seq::set_csr_test_range();
             UVM_MEDIUM)
 
   test_csrs.shuffle();
-endfunction
-
-function bit csr_base_seq::is_excl(uvm_object obj,
-                                   csr_excl_type_e csr_excl_type,
-                                   csr_test_type_e csr_test_type);
-  csr_excl_item csr_excl = get_excl_item(obj);
-  if (csr_excl == null) begin
-    return 0;
-  end else begin
-    return csr_excl.is_excl(obj, csr_excl_type, csr_test_type);
-  end
 endfunction
 
 function bit csr_base_seq::csr_excluded(uvm_reg csr);
