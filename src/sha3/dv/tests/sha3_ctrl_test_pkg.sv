@@ -13,4 +13,5 @@ package sha3_ctrl_test_pkg;
 
   `include "sha3_ctrl_base_test.sv"
   `include "sha3_ctrl_intr_test_test.svh"
+  `include "sha3_ctrl_same_csr_outstanding_test.svh"
 endpackage

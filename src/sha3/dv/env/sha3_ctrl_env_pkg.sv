@@ -22,6 +22,7 @@ package sha3_ctrl_env_pkg;
   import ahb_agent_pkg::ahb_txn_request_item;
   import ahb_agent_pkg::ahb_txn_item;
   import ahb_agent_pkg::ahb_txn_response_item;
+  import ahb_agent_pkg::sub_addr_range_t;
   import ahb_agent_pkg::ahb_mgr_reg_adapter;
   import ahb_agent_pkg::ahb_txn_sequencer_t;
   import ahb_agent_pkg::ahb_single_read_seq, ahb_agent_pkg::ahb_single_write_seq;
