@@ -35,6 +35,27 @@ package ahb_agent_pkg;
     int unsigned subordinate_idx; // Index of the associated subordinate.
   } sub_addr_range_t;
 
+  // Search in mappings for a subordinate that is associated with addr.
+  //
+  // If there is an item in the queue where the address range contains addr, this writes the
+  // subordinate index to the sub_idx output argument and returns 1.
+  //
+  // If there is no item in the queue that contains addr, this writes '1 to the sub_idx output
+  // argument and returns 0.
+  function automatic bit get_subordinate_for_addr(bit [63:0]                 addr,
+                                                  const ref sub_addr_range_t mappings[$],
+                                                  output int unsigned        sub_idx);
+    foreach (mappings[i]) begin
+      if (mappings[i].addr_min <= addr && addr <= mappings[i].addr_max) begin
+        sub_idx = mappings[i].subordinate_idx;
+        return 1'b1;
+      end
+    end
+
+    sub_idx = '1;
+    return 1'b0;
+  endfunction
+
   `include "ahb_status_item.svh"
   `include "ahb_reg_op_item.svh"
 

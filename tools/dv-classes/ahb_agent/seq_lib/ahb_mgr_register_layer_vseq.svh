@@ -40,11 +40,6 @@ class ahb_mgr_register_layer_vseq extends uvm_sequence;
   // Call this to configure the sequence before starting it.
   extern function void set_subordinates(const ref sub_addr_range_t mappings[$]);
 
-  // Return the subordinate most recently associated with a range containing addr.
-  //
-  // If no subordinate is associated with the range, this writes 1 to the no_sub output argument.
-  extern local function int unsigned get_subordinate_for_addr(bit [63:0] addr, output bit no_sub);
-
   // Configure whether the AHB bus has an HPROT signal. If has_hprot is false, sequences are
   // constrained to generate items with m_prot = 0.
   extern function void set_has_hprot(bit has_hprot);
@@ -101,21 +96,6 @@ function void ahb_mgr_register_layer_vseq::set_subordinates(const ref sub_addr_r
   end
 endfunction
 
-function int unsigned ahb_mgr_register_layer_vseq::get_subordinate_for_addr(bit [63:0] addr,
-                                                                            output bit no_sub);
-  foreach (m_subordinate_mappings[i]) begin
-    if (m_subordinate_mappings[i].addr_min <= addr &&
-        addr <= m_subordinate_mappings[i].addr_max) begin
-      return m_subordinate_mappings[i].subordinate_idx;
-    end
-  end
-
-  // No match. Set no_sub, allowing the caller to report an error and abort.
-  no_sub = 1;
-
-  return 0;
-endfunction
-
 function void ahb_mgr_register_layer_vseq::set_has_hprot(bit has_hprot);
   m_has_hprot = has_hprot;
 endfunction
@@ -124,14 +104,6 @@ task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
   // This task handles the bulk of the work that would normally be done by a uvm_reg_adapter's
   // reg2bus and bus2reg functions.
   bit no_sub;
-
-  int unsigned subordinate_idx = get_subordinate_for_addr(item.m_rw.addr, no_sub);
-  if (no_sub) begin
-    `uvm_error(get_full_name(),
-               $sformatf("No subordinate is associated with address 0x%0h", item.m_rw.addr))
-    item.m_rw.status = UVM_NOT_OK;
-    return;
-  end
 
   // item.m_rw.n_bits gives the number of bits that are being accessed. Since we don't support burst
   // accesses, round this up to the next value for HSIZE by dividing down to bytes (and taking the
@@ -145,6 +117,14 @@ task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
   // The strb value to send on a write transaction, or the byte mask to use with rdata in a read
   // response. This takes size and byte_en into account.
   bit [127:0] byte_mask = strb_from_size & item.m_rw.byte_en;
+
+  int unsigned subordinate_idx;
+
+  if (!get_subordinate_for_addr(item.m_rw.addr, m_subordinate_mappings, subordinate_idx)) begin
+    `uvm_error(get_full_name(),
+               $sformatf("No subordinate is associated with address 0x%0h", item.m_rw.addr))
+    return;
+  end
 
   if (hsize > 7) begin
     `uvm_error(get_full_name(),
