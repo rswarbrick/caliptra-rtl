@@ -5,9 +5,17 @@
 // A driver for ahb_if, used when the testbench is acting as an AHB Manager that is requesting
 // transactions.
 //
-// The driver sends a response to every item, sending an ahb_status_item (with m_sending_complete=0)
-// if the transfer was interrupted by a reset and sending an ahb_txn_response_item with the bus
-// response otherwise.
+// The driver sends at least one response to every item. Normally, it sends two:
+//
+//   - It sends an ahb_txn_request_item (which is the one it is currently driving) when the request
+//     has been sent. This allows a sequence to see when the item has started (and, because AHB is
+//     not pipelined, that the previous item is finished).
+//
+//   - It sends an ahb_txn_response_item containing a response once one comes back.
+//
+// However, it might see a reset on the interface. At that point, it immediately sends an
+// ahb_status_item and marks the request item done. A sequence should consume responses from the
+// driver for the request until it sees either an ahb_txn_response_item or an ahb_status_item.
 
 class ahb_mgr_driver extends uvm_driver#(ahb_txn_request_item, uvm_sequence_item);
   `uvm_component_utils(ahb_mgr_driver)
@@ -157,9 +165,18 @@ task ahb_mgr_driver::at_clock_edge(ahb_txn_request_item next_item,
     return;
   end
 
-  // At this point m_cur_data_phase is null. Move m_cur_addr_phase into m_cur_data_phase.
-  m_cur_data_phase = m_cur_addr_phase;
-  m_cur_addr_phase = null;
+  // At this point, any item in m_cur_addr_phase has just had its address phase sent. Send the item
+  // to seq_item_port (the first response that the driver will send for this request item) and move
+  // that item into m_cur_data_phase.
+  //
+  // Note the ordering in this task: we will send the ahb_txn_response_item for any previous request
+  // in read_and_send_response before sending the ahb_txn_request_item for the new one. As such, the
+  // sequence doesn't need to worry transaction IDs (even though we are setting them).
+  if (m_cur_addr_phase != null) begin
+    seq_item_port.put_response(m_cur_addr_phase);
+    m_cur_data_phase = m_cur_addr_phase;
+    m_cur_addr_phase = null;
+  end
 
   // Can we drive the addr phase of next_item? We can only do so if next_item is not null and either
   // m_cur_data_phase is null or has it the same m_subordinate_idx as next_item. If so, set

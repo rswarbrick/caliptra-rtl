@@ -57,6 +57,15 @@ class ahb_transfer_seq extends uvm_sequence #(ahb_txn_request_item, uvm_sequence
   // an m_wstrb field that matches this value.
   protected rand bit [127:0]  m_fixed_wstrb;
 
+  // This bit is cleared when the address phase for the first item has been sent by the driver. Wait
+  // for it (once the whole sequence has started) with wait_for_first_request(). This should allow
+  // back-to-back operations without a vast list of running sequences.
+  //
+  // If that first item finishes early (because of a reset), we clear m_first_request_waiting,
+  // meaning that wait_for_first_request will always complete before the sequence or at the same
+  // time as it does.
+  local bit                   m_first_request_waiting = 1;
+
   extern function new(string name="");
   extern task body();
 
@@ -66,6 +75,11 @@ class ahb_transfer_seq extends uvm_sequence #(ahb_txn_request_item, uvm_sequence
   // transaction iff there are the same number of responses as requests (so we haven't seen a
   // reset).
   extern function bit has_full_transaction();
+
+  // Wait until the first request in the sequence has been sent.
+  //
+  // If the sequence stops early because of a reset, this task finishes then too.
+  extern task wait_for_first_request();
 
   // Randomize the first request item (constrained to match the fields in the sequence)
   extern virtual protected function void randomize_first_item(ahb_txn_request_item item);
@@ -77,10 +91,15 @@ class ahb_transfer_seq extends uvm_sequence #(ahb_txn_request_item, uvm_sequence
                                                               ahb_txn_request_item item0,
                                                               bit [63:0]           addr);
 
-  // Consume a response from the driver. If have_seen_reset is true, we have already seen a reset.
+  // Consume a response from the driver. If had_seen_reset is true, we have already seen a reset. If
+  // expect_request_item is true, we expect the driver to send an ahb_txn_request_item to say it has
+  // sent the address phase of the item it is currently handling. If not, we expect the driver to
+  // send an ahb_txn_response_item based on the data phase for the item.
   //
   // Return true if we have now seen a reset.
-  extern local function bit consume_response(uvm_sequence_item base_response, bit have_seen_reset);
+  extern local function bit consume_response(uvm_sequence_item base_response,
+                                             bit               expect_request_item,
+                                             bit               had_seen_reset);
 
   // Constrain m_length to be compatible with m_burst
   extern constraint length_burst_compat_c;
@@ -116,96 +135,133 @@ endfunction
 task ahb_transfer_seq::body();
   ahb_txn_request_item item0  = ahb_txn_request_item::type_id::create("item0");
 
-  // We might send more transfers than m_length because we sometimes add "busy" transfers, which act
-  // as bubbles in the stream of data transfers. words_done is the count of items that have been
-  // sent and had an m_trans other than TransBusy. We expect this to count up to m_length.
-  int unsigned         words_done = 0;
-
-  // Because the driver is designed to allow items to overlap (because the data phase of transfer N
-  // overlaps with the address phase of transfer N+1), it marks items done immediately and we have
-  // to explicitly consume responses. responses_seen is the number of responses that we have
-  // consumed. This will never be larger than m_requests.size() but might be larger than words_done,
-  // because we will also see responses to TransBusy requests.
-  int unsigned         responses_seen = 0;
-
   // When the driver sees a reset being asserted, it sends a response that is an ahb_status_item.
   // Once that happens, we need to consume some extra responses (until responses_seen matches
   // m_requests.size())
-  bit                  have_seen_reset = 0;
+  bit        have_seen_reset = 0;
 
   // The size (in bytes) of the entire burst, inferred from the number of words and the number of
   // bytes in each word.
-  bit [63:0]           total_size_bytes = m_length * (1 << m_size);
+  bit [63:0] total_size_bytes = m_length * (1 << m_size);
 
   // Wrapping bursts wrap their addresses, based on the total size of the burst (against which,
   // m_addr might not be naturally aligned). This variable is only used for wrapping bursts, where
   // m_length will be 4, 8 or 16. In that situation, total_size_bytes will be a power of 2 and
   // wrap_addr_base is the greatest multiple of total_size_bytes that is not larger than m_addr.
-  bit [63:0]           wrap_addr_base = m_addr & ~(total_size_bytes - 1);
+  bit [63:0] wrap_addr_base = m_addr & ~(total_size_bytes - 1);
+
+  start_item(item0);
 
   // Randomise the first item that will be sent. This is also used as a template for later transfers
   // (which will use the same m_subordinate_idx, m_burst, m_size, m_write etc.)
   randomize_first_item(item0);
-  start_item(item0);
-  finish_item(item0);
-  m_requests.push_back(item0);
-  words_done++;
 
-  // Send items for the rest of the burst, possibly with occasional TransBusy items (which will end
-  // up in m_requests and m_responses, but aren't counted in words_done). If we see a reset, stop
-  // sending new items.
-  while (words_done < m_length && !have_seen_reset) begin
-    ahb_txn_request_item item = ahb_txn_request_item::type_id::create("item");
-    bit [63:0] item_addr;
+  fork : isolation_fork begin
+    int unsigned         words_sent;
+    uvm_sequence_item    base_response;
 
-    if (m_burst inside {BurstWrap4, BurstWrap8, BurstWrap16}) begin
-      // Offsets are measured from the start of the wrap window
-      bit [63:0] linear_offset = (m_addr - wrap_addr_base) + words_done * (64'h1 << m_size);
-      bit [63:0] wrapped_offset = linear_offset % total_size_bytes;
+    // The last request that was sent in this sequence. This is used to match transaction IDs for
+    // responses.
+    ahb_txn_request_item last_request;
 
-      item_addr = wrap_addr_base + wrapped_offset;
-    end else begin
-      // Non-wrapping offsets are measured from m_addr, which was the address of the first access.
-      item_addr = m_addr + words_done * (64'h1 << m_size);
+    // If saw_reset_on_first_request is true, we saw a reset when we were sending the request for
+    // item0. As such, there is no "previous item" whose response we should wait for after the loop.
+    bit                  saw_reset_on_first_request;
+
+    // Start running item0 (with join_none) and then wait for the first response that the driver
+    // sends for it.
+    fork finish_item(item0); join_none
+
+    get_base_response(base_response, item0.get_transaction_id());
+
+    // What sort of response have we seen? The driver should either have sent an
+    // ahb_txn_request_item (to say that it has managed to send the request for item0) or an
+    // ahb_status_item (to say that there has been a reset on the interface).
+    have_seen_reset = consume_response(base_response, 1, have_seen_reset);
+    m_requests.push_back(item0);
+    last_request = item0;
+    m_first_request_waiting = 0;
+    words_sent = 1;
+
+    // If have_seen_reset is true now then the driver hase reported we sent it item0 when the
+    // interface was already in reset (and it won't send any more responses to the item).
+    saw_reset_on_first_request = have_seen_reset;
+
+    // Send items for the rest of the burst, possibly with occasional TransBusy items (which will
+    // end up in m_requests and m_responses, but aren't counted in words_sent). If we see a reset,
+    // stop sending new items.
+    while (words_sent < m_length && !have_seen_reset) begin
+      ahb_txn_request_item item = ahb_txn_request_item::type_id::create("item");
+      bit [63:0]           item_addr;
+
+      if (m_burst inside {BurstWrap4, BurstWrap8, BurstWrap16}) begin
+        // Offsets are measured from the start of the wrap window
+        bit [63:0] linear_offset = (m_addr - wrap_addr_base) + words_sent * (64'h1 << m_size);
+        bit [63:0] wrapped_offset = linear_offset % total_size_bytes;
+
+        item_addr = wrap_addr_base + wrapped_offset;
+      end else begin
+        // Non-wrapping offsets are measured from m_addr, which was the address of the first access.
+        item_addr = m_addr + words_sent * (64'h1 << m_size);
+      end
+
+      start_item(item);
+      randomize_later_item(item, item0, item_addr);
+
+      // We are sending a word from the burst if item.m_trans is not TransBusy.
+      if (item.m_trans != TransBusy) words_sent++;
+
+      // Start running item and, in parallel, wait for responses to the previous item. The join_any
+      // will complete when get_base_response finishes with a response for the previous item, at
+      // which point we keep going: the next iteration (or a wait fork at the end) will ensure the
+      // finish_item task runs to completion.
+      fork
+        finish_item(item);
+        begin
+          // Get a response from the driver for last_request. This will either be a status item
+          // saying there has been a reset or it will be a data response. Note that the driver
+          // doesn't send a response until the subordinate responds that it is not busy, so we don't
+          // need a loop waiting for that here.
+          get_base_response(base_response, last_request.get_transaction_id());
+          have_seen_reset = consume_response(base_response, 0, have_seen_reset);
+
+          // Now get a response from the driver for item. This should not cause any delay, because
+          // the address phase for item will go through at the same time as the data phase for
+          // last_request.
+          get_base_response(base_response, item.get_transaction_id());
+          have_seen_reset = consume_response(base_response, 1, have_seen_reset);
+        end
+      join_any
+
+      // Add item to m_requests to show that we've started trying to send this item, and set
+      // last_request to point at it (the last request that has been sent).
+      m_requests.push_back(item);
+      last_request = item;
     end
 
-    start_item(item);
-    randomize_later_item(item, item0, item_addr);
-    finish_item(item);
 
-    // Add item to m_requests to show that we've started trying to send this item.
-    m_requests.push_back(item);
-
-    // Look to see whether there have been any responses. If so consume them (in order). Add any
-    // transaction responses to m_responses
-    while (response_queue.size()) begin
-      uvm_sequence_item base_response;
-      get_base_response(base_response);
-      responses_seen++;
-
-      have_seen_reset = consume_response(base_response, have_seen_reset);
+    if (!saw_reset_on_first_request) begin
+      // At this point, we have stopped sending items (either because we have sent enough or because
+      // we have seen a reset). We haven't yet consumed a response for the last request that was
+      // sent, so should do that now.
+      get_base_response(base_response, last_request.get_transaction_id());
+      void'(consume_response(base_response, 0, have_seen_reset));
     end
 
-    if (item.m_trans != TransBusy) begin
-      words_done++;
-    end
-  end
-
-  // At this point, we have stopped sending items (either because we have sent enough or because we
-  // have seen a reset). The last few requests that were sent may not yet have a response. Consume
-  // responses until we have caught up again.
-  while (responses_seen < m_requests.size()) begin
-    uvm_sequence_item base_response;
-    get_base_response(base_response);
-    responses_seen++;
-
-    have_seen_reset = consume_response(base_response, have_seen_reset);
-  end
+    // Finally, wait for any process that is still running in the isolation fork. That should only
+    // be the call to finish_item for the last item, which will complete in zero time (which we know
+    // because we've just consumed its final response).
+    wait fork;
+  end join
 endtask
 
 function bit ahb_transfer_seq::has_full_transaction();
   return (m_requests.size() == m_responses.size());
 endfunction
+
+task ahb_transfer_seq::wait_for_first_request();
+  wait (!m_first_request_waiting);
+endtask
 
 function void ahb_transfer_seq::randomize_first_item(ahb_txn_request_item item);
   if (!item.randomize() with {
@@ -255,21 +311,33 @@ function void ahb_transfer_seq::randomize_later_item(ahb_txn_request_item item,
 endfunction
 
 function bit ahb_transfer_seq::consume_response(uvm_sequence_item base_response,
-                                                bit               have_seen_reset);
+                                                bit               expect_request_item,
+                                                bit               had_seen_reset);
+  ahb_txn_request_item  txn_request;
   ahb_txn_response_item txn_response;
   ahb_status_item       status_response;
+  bit have_seen_reset = had_seen_reset;
 
-  if ($cast(txn_response, base_response)) begin
-    if (!have_seen_reset) m_responses.push_back(txn_response);
+  if ($cast(txn_request, base_response)) begin
+    if (!expect_request_item) begin
+      `uvm_fatal(get_full_name(),
+                 "Driver sent an ahb_txn_request_item when we were expecting a response.")
+    end
+  end else if ($cast(txn_response, base_response)) begin
+    if (expect_request_item) begin
+      `uvm_fatal(get_full_name(),
+                 "Driver sent an ahb_txn_response_item when we were expecting a request.")
+    end
+    if (!had_seen_reset) m_responses.push_back(txn_response);
   end else if ($cast(status_response, base_response)) begin
     if (status_response.m_sending_complete) begin
       `uvm_error(get_full_name(), "Status response item sent with m_sending_complete=1.")
     end
     have_seen_reset = 1;
   end else begin
-    `uvm_error(get_full_name(),
+    `uvm_fatal(get_full_name(),
                {"Transaction sent a response that was neither an ",
-                "ahb_txn_response_item nor an ahb_status_item."})
+                "ahb_txn_request_item, an ahb_txn_response_item nor an ahb_status_item."})
   end
 
   return have_seen_reset;
