@@ -15,6 +15,7 @@ filesets:
       - lowrisc:dv:ahb_agent
       - lowrisc:dv:reset_agent
       - lowrisc:dv:intr_test_vseq
+      - lowrisc:dv:ahb_same_csr_outstanding_vseq
       - caliptra:dv:sha3_ctrl_ral
     files:
       - sha3_ctrl_env_pkg.sv
