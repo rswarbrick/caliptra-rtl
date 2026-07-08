@@ -18,6 +18,9 @@ class dv_base_test #(type CFG_T = dv_base_env_cfg,
   uint   poll_for_stop_interval_ns = 1000;
   bit    print_topology  = 1'b0;
 
+  // The sequence that is currently being run by run_seq
+  protected uvm_sequence_base m_current_sequence;
+
   `uvm_component_new
 
   virtual function void build_phase(uvm_phase phase);
@@ -138,15 +141,21 @@ class dv_base_test #(type CFG_T = dv_base_env_cfg,
   virtual task run_seq(string test_seq_s, uvm_phase phase);
     uvm_sequence_base test_seq = create_seq_by_name(test_seq_s);
 
+    if (m_current_sequence != null) begin
+      `uvm_fatal(get_full_name(), "Overlapping calls to run_seq.")
+    end
+
     configure_sequence(test_seq);
 
     `DV_CHECK_RANDOMIZE_FATAL(test_seq)
 
+    m_current_sequence = test_seq;
     `uvm_info(`gfn, {"Starting test sequence ", test_seq_s}, UVM_MEDIUM)
     phase.raise_objection(this, $sformatf("%s objection raised", `gn));
     test_seq.start(env.virtual_sequencer);
     phase.drop_objection(this, $sformatf("%s objection dropped", `gn));
     `uvm_info(`gfn, {"Finished test sequence ", test_seq_s}, UVM_MEDIUM)
+    m_current_sequence = null;
   endtask
 
   // A virtual function that allows the test to set up the sequence to know about the sequencer
