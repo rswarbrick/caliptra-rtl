@@ -136,7 +136,7 @@ class dv_base_test #(type CFG_T = dv_base_env_cfg,
   endfunction
 
   virtual task run_seq(string test_seq_s, uvm_phase phase);
-    uvm_sequence test_seq = create_seq_by_name(test_seq_s);
+    uvm_sequence_base test_seq = create_seq_by_name(test_seq_s);
 
     configure_sequence(test_seq);
 
@@ -156,7 +156,7 @@ class dv_base_test #(type CFG_T = dv_base_env_cfg,
   // The base class version of this function registers env.virtual_sequencer. If a testbench wishes
   // to register multiple sequencers with a virtual sequence, it can do so by overriding this
   // function.
-  virtual function void configure_sequence(uvm_sequence seq);
+  virtual function void configure_sequence(uvm_sequence_base seq);
     seq.set_sequencer(env.virtual_sequencer);
   endfunction
 

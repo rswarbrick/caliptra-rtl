@@ -285,7 +285,7 @@ class dv_base_vseq #(type RAL_T               = dv_base_reg_block,
   // Creating the sequence through this method rather than the underlying function,
   // dv_utils_pkg::create_seq_by_name, allows subclasses of dv_base_seq to copy information about
   // themselves (such as sequencers or other configuration) to the new sequence.
-  virtual function uvm_sequence create_seq_by_name(string name);
+  virtual function uvm_sequence_base create_seq_by_name(string name);
     return dv_utils_pkg::create_seq_by_name(name);
   endfunction
 endclass
