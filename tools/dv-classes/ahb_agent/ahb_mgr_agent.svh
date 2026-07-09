@@ -167,7 +167,7 @@ task ahb_mgr_agent::run_layered_register_vseq();
   `uvm_fatal(get_full_name(), "Instance of ahb_mgr_register_layer_vseq ran to completion.")
 endtask
 
-function layered_reg_sequencer_t ahb_mgr_agent::get_register_layering_sequencer();
+function ahb_mgr_agent::layered_reg_sequencer_t ahb_mgr_agent::get_register_layering_sequencer();
   if (m_layered_reg_sequencer == null)
     `uvm_fatal(get_full_name(), "m_layered_reg_sequencer is null.")
 
