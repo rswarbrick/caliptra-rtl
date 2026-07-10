@@ -13,6 +13,7 @@ filesets:
       - lowrisc:dv:digestpp_dpi:0.1
       - caliptra:compile_yml:sha3_ctrl
       - lowrisc:dv:ahb_agent
+      - lowrisc:dv:reset_agent
       - caliptra:dv:sha3_ctrl_ral
     files:
       - sha3_ctrl_env_pkg.sv

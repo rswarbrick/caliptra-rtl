@@ -35,6 +35,10 @@ class reset_agent extends uvm_agent;
 
   // Get the sequencer. Can only be called after build_phase, and the agent must be active.
   extern function reset_sequencer_t get_sequencer();
+
+  // Run a sequence that immediately causes a reset. This task is a convenience to avoid every
+  // "start of test call-site" having to implement the same thing.
+  extern task reset_now();
 endclass
 
 function reset_agent::new(string name, uvm_component parent);
@@ -90,3 +94,9 @@ function reset_sequencer_t reset_agent::get_sequencer();
   if (m_sequencer == null) `uvm_fatal(get_full_name(), "m_sequencer is null.")
   return m_sequencer;
 endfunction
+
+task reset_agent::reset_now();
+  reset_now_seq seq = reset_now_seq::type_id::create("seq");
+  if (!seq.randomize()) `uvm_fatal(get_full_name(), "Failed to randomise seq")
+  seq.start(m_sequencer);
+endtask
