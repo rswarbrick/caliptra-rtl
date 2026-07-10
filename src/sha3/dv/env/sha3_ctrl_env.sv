@@ -10,6 +10,9 @@ class sha3_ctrl_env extends dv_base_env #(
   );
   `uvm_component_utils(sha3_ctrl_env)
 
+  // Agent to drive the reset interface
+  local reset_agent m_reset_agent;
+
   // Agent to access the AHB interface
   local ahb_mgr_agent m_ahb_mgr_agent;
 
@@ -26,6 +29,9 @@ class sha3_ctrl_env extends dv_base_env #(
 
     super.build_phase(phase);
 
+    if (!uvm_config_db#(virtual reset_if)::get(this, "", "reset_vif", cfg.m_reset_vif)) begin
+      `uvm_fatal(get_full_name(), "No reset_vif supplied to environment.")
+    end
     if (!uvm_config_db#(virtual ahb_if)::get(this, "", "ahb_vif", cfg.m_ahb_vif)) begin
       `uvm_fatal(get_full_name(), "No ahb_vif supplied to environment.")
     end
@@ -44,6 +50,9 @@ class sha3_ctrl_env extends dv_base_env #(
                                            cfg.m_subordinate_idx)) begin
       `uvm_fatal(get_full_name(), "No subordinate index supplied to environment.")
     end
+
+    m_reset_agent = reset_agent::type_id::create("m_reset_agent", this);
+    m_reset_agent.set_vif(cfg.m_reset_vif);
 
     uvm_config_db#(virtual ahb_if)::set(this, "m_ahb_mgr_agent*", "vif", cfg.m_ahb_vif);
     m_ahb_mgr_agent = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
@@ -86,6 +95,10 @@ class sha3_ctrl_env extends dv_base_env #(
 
   function ahb_mgr_agent get_ahb_mgr_agent();
     return m_ahb_mgr_agent;
+  endfunction
+
+  function reset_agent get_reset_agent();
+    return m_reset_agent;
   endfunction
 
   // Run the vseq inside m_ahb_mgr_agent that will support front-door register accesses

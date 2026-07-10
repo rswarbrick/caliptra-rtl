@@ -12,6 +12,7 @@ module tb;
 
   wire clk, rst_n;
   clk_rst_if clk_rst_if(.clk(clk), .rst_n(rst_n));
+  reset_if reset_if(.clk_i(clk), .rst_n(rst_n));
 
   // AHB host-side interface.
   //
@@ -74,8 +75,11 @@ module tb;
   assign kmac_intr_if.kmac_err   = dut.u_sha_inst.intr_kmac_err_o;
 
   initial begin
-    // drive clk and rst_n from clk_if
-    clk_rst_if.set_active();
+    // Drive clk from clk_rst_if but leave rst_n driven by reset_if (which is controlled by an agent
+    // in the environment)
+    clk_rst_if.set_active(.drive_clk_val(1), .drive_rst_n_val(0));
+
+    uvm_config_db#(virtual reset_if)::set(null, "*.env", "reset_vif", reset_if);
     uvm_config_db#(virtual clk_rst_if)::set(null, "*.env", "clk_rst_vif", clk_rst_if);
     uvm_config_db#(virtual ahb_if)::set(null, "*.env", "ahb_vif", ahb_if_h);
     uvm_config_db#(virtual sha3_intr_if)::set(null, "*.env", "intr_vif", intr_if);

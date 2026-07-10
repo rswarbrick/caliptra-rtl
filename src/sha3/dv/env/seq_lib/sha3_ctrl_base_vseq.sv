@@ -19,6 +19,14 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
   // set_ahb_sequencer() before running the sequence.
   protected ahb_txn_sequencer_t m_ahb_sequencer;
 
+  // A sequencer for the reset interface.
+  //
+  // If this sequence needs to inject a reset, this sequencer must be configured by the test by
+  // calling set_reset_sequencer() before running the sequence.
+  //
+  // This may be null (for sequences that don't need to inject a reset)
+  protected reset_sequencer_t m_reset_sequencer;
+
   // used to randomly enable interrupts
   rand bit [31:0] enable_intr;
 
@@ -285,8 +293,45 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
     if (do_kmac_init) kmac_init();
   endtask
 
+  // A replacement for dv_base_vseq::apply_reset, but customised to use m_reset_sequencer to run an
+  // actual reset sequence.
+  //
+  // Note that this vseq might not have been configured to support injecting resets. In that case,
+  // this task will fail with a runtime error.
+  virtual task apply_reset(string kind = "HARD");
+    if (kind == "HARD") begin
+      import reset_agent_pkg::reset_seq;
+      reset_seq seq = reset_seq::type_id::create("seq");
+
+      if (m_reset_sequencer == null) begin
+        `uvm_fatal(get_full_name(), "Cannot apply reset because m_reset_sequencer is null.")
+      end
+
+      // This is constrained so that it doesn't necessarily land on a clock edge, but doesn't take
+      // very long. Since we don't know the clock frequency here, let's just pick 1ns as an upper
+      // bound: even with a 1GHz clock, that is still only one cycle.
+      if (!seq.randomize() with { m_item.m_delay_ps < 1000; }) begin
+        `uvm_fatal(get_full_name(), "Failed to randomise reset sequence.")
+      end
+
+      // Note that this won't really behave as expected if there is already a sequence running on
+      // m_reset_sequencer: this reset will be queued and wait after the one that's currently
+      // running.
+      seq.start(m_reset_sequencer);
+    end
+  endtask
+
   virtual task pre_start();
+    bit   old_do_apply_reset = do_apply_reset;
+
+    // Before running dv_base_vseq::pre_start, configure the base class dv_base_vseq::do_apply_reset
+    // to be false: this virtual sequence is designed to be run in an environment where a test has
+    // already done so.
+    do_apply_reset = 0;
+
     super.pre_start();
+
+    do_apply_reset = old_do_apply_reset;
 
     if (m_ahb_sequencer == null) begin
       `uvm_fatal(get_full_name(), "Cannot run sequence without an AHB sequencer.")
@@ -299,6 +344,11 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
   // Set the sequencer to use for AHB transactions that will be sent to sha3_ctrl.
   function void set_ahb_sequencer(ahb_txn_sequencer_t sequencer);
     m_ahb_sequencer = sequencer;
+  endfunction
+
+  // Set the sequencer to use for reset items
+  function void set_reset_sequencer(reset_sequencer_t sequencer);
+    m_reset_sequencer = sequencer;
   endfunction
 
   // Set or clear the given bits in the intr_enable register

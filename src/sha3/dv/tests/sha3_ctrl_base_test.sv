@@ -24,7 +24,21 @@ class sha3_ctrl_base_test extends dv_base_test #(
 
   virtual task run_phase(uvm_phase phase);
     fork
-      super.run_phase(phase);
+      begin
+        // Because we want to cause something to happen before starting super.run_phase, we need an
+        // overlapping objection to avoid the run_phase completing before we get as far as running
+        // the real test.
+        phase.raise_objection(this, "sha3_ctrl_base_test run_phase");
+
+        // The standard run_phase will immediately start running a virtual sequence. Inject an reset
+        // beforehand.
+        if (cfg.is_active) env.get_reset_agent().reset_now();
+
+        super.run_phase(phase);
+
+        phase.drop_objection(this, "sha3_ctrl_base_test run_phase");
+      end
+
       if (cfg.is_active) begin
         env.run_layered_register_vseq();
       end
@@ -41,6 +55,7 @@ class sha3_ctrl_base_test extends dv_base_test #(
     end
 
     vseq.set_ahb_sequencer(env.get_ahb_mgr_agent().get_sequencer());
+    vseq.set_reset_sequencer(env.get_reset_agent().get_sequencer());
   endfunction
 
 endclass : sha3_ctrl_base_test
