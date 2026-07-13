@@ -135,6 +135,8 @@
     {
       name: sha3_ctrl_stress_all_with_rand_reset
       run_opts: ["+test_vectors_dir={build_dir}/fusesoc-work/src/lowrisc_dv_test_vectors_0"]
+      uvm_test_seq: sha3_ctrl_rand_reset_vseq
+      uvm_test: sha3_ctrl_rand_reset_test
       reseed: 10
     }
     {
