@@ -17,6 +17,7 @@ package sha3_ctrl_env_pkg;
   import keymgr_pkg::*;
 
   import reset_agent_pkg::reset_agent;
+  import reset_agent_pkg::reset_sequencer_t;
 
   import ahb_agent_pkg::ahb_mgr_agent;
   import ahb_agent_pkg::ahb_txn_request_item;

@@ -12,3 +12,4 @@
 `include "sha3_ctrl_stress_all_vseq.sv"
 `include "sha3_ctrl_intr_test_vseq.svh"
 `include "sha3_ctrl_csr_vseq.svh"
+`include "sha3_ctrl_rand_reset_vseq.svh"
