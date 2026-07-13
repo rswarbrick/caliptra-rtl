@@ -9,10 +9,13 @@ class sha3_ctrl_stress_all_vseq extends sha3_ctrl_base_vseq;
 
   string vseq_names[$] = {
     "sha3_ctrl_smoke_vseq",
-    "sha3_ctrl_long_msg_and_output_vseq",
     "sha3_ctrl_burst_write_vseq"
     // Do not include sha3 or shake test vectors as they require a specific value for a shared
     // plusarg - excluding them does not detract much from the stress_all test
+    //
+    // The stress sequence also doesn't include sha3_ctrl_long_msg_and_output_vseq: one iteration of
+    // that vseq takes a couple of hours to simulate(!) and we don't really have any reason to
+    // believe that its behaviour will interact interestingly with the other sequences.
   };
 
   virtual task pre_start();
