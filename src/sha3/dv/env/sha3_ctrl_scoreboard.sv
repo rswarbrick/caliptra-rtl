@@ -1146,6 +1146,17 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     `uvm_info(`gfn, $sformatf("output_len_bytes: %0d", output_len_bytes), UVM_HIGH)
     `uvm_info(`gfn, $sformatf("xof_en: %0d", xof_en), UVM_HIGH)
 
+    // The number of bytes to write should be positive (passing an empty dynamic array over DPI is
+    // undefined, and isn't very interesting here anyway: we want *some* output data)
+    if (!output_len_bytes) begin
+      `uvm_warning(get_full_name(),
+                   {"Implausible calculated digest length of zero. ",
+                    "This probably means that the mode has a variable output length but ",
+                    "no digest data have been read. ",
+                    "Skipping comparison: there's nothing to compare."})
+      return;
+    end
+
     // initialize arrays
     dpi_digest = new[output_len_bytes];
 
