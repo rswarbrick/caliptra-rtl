@@ -1459,6 +1459,120 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     endcase
   endfunction
 
+  // Decode a string that has been encoded with the encode_string algorithm described in NIST SP
+  // 800-185.
+  //
+  // - start_idx is the index for the first byte (in encoded_bytes) for the encoded string.
+  //
+  // - encoded_words is a queue of bytes in stream order that contains the encoded string starting
+  //   at start_idx.
+  //
+  // - decoded_str is an output argument with the string that is decoded.
+  //
+  // The return value is the first index in encoded_bytes above the bytes that were decoded.
+  function int unsigned decode_string(int unsigned         start_idx,
+                                      const ref bit [7:0]  encoded_bytes[$],
+                                      output string        decoded_str);
+    bit [7:0]    num_enc_bytes_of_str_len;
+    bit [31:0]   str_len_in_bits;
+    int unsigned str_len_in_bytes;
+    int unsigned idx0, idx1;
+
+    // Check that start_idx is actually a valid index in encoded_bytes. If not, generate an error,
+    // decode a "" and return 0.
+    if (start_idx >= encoded_bytes.size()) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"There cannot be an encoded string started at idx %0d in ",
+                            "encoded_bytes because that queue has length %0d."},
+                           start_idx, encoded_bytes.size()))
+    end
+
+    num_enc_bytes_of_str_len = encoded_bytes[start_idx];
+
+    // Check that this number isn't enormous. If encoding a length x, this should be the smallest n
+    // such that 2^(8*n) > x. We want to support strings of length more than 255, so should allow n
+    // to be 0, 1 or 2. But we will only get n >= 3 if the string has length at least 65536, which
+    // is out of scope for this scoreboard.
+    if (num_enc_bytes_of_str_len > 2) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"Encoded string length takes %0d bytes, so the string must be at ",
+                            "least 2^(8 * %0d) = 2^%0d bytes long: ",
+                            "more than the scoreboard supports."},
+                           num_enc_bytes_of_str_len,
+                           num_enc_bytes_of_str_len,
+                           8 * num_enc_bytes_of_str_len))
+      decoded_str = "?";
+      return 1;
+    end
+
+    // The encoded string length will take the next num_enc_bytes_of_str_len bytes of encoded_bytes.
+    // Check that the queue is long enough. If not, generate an error, decode a "?" and return 1.
+    if (encoded_bytes.size() < start_idx + 1 + num_enc_bytes_of_str_len) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"Encoded string length was %0d bytes so the output of left_encode ",
+                            "took %0d bytes in total. But encoded_bytes only has %0d elements ",
+                            "after the start index of %0d."},
+                           num_enc_bytes_of_str_len,
+                           1 + num_enc_bytes_of_str_len,
+                           encoded_bytes.size(),
+                           start_idx))
+      decoded_str = "?";
+      return 1;
+    end
+
+    // Decode the string length itself. Here, i matches the index for O_i in the description of
+    // left_encode in NIST SP 800-185.
+    for (int unsigned i = 1; i <= num_enc_bytes_of_str_len; i++) begin
+      // O_i is encoded_bytes[i], which is the byte value of x_i. This is added to the sum for x in
+      // a term 2^(8 * (n - i)) * x[i], where n = num_enc_bytes_of_str_len.
+      str_len_in_bits += 32'(encoded_bytes[start_idx + i]) << (8 * (num_enc_bytes_of_str_len - i));
+    end
+
+    // If the encoded string length isn't a multiple of 8 bits, something has gone wrong. Generate
+    // an error and round down (in case the error didn't kill the simulation immediately).
+    if (str_len_in_bits % 8) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("String length decodes to %0d bits, which is not a multiple of 8.",
+                           str_len_in_bits))
+    end
+    str_len_in_bytes = str_len_in_bits / 8;
+
+    // The total number of bytes needed in the queue is
+    //
+    //    1 + num_enc_bytes_of_str_len + str_len_in_bytes.
+    //
+    // Check that encoded_bytes is long enough for this. If not, generate an error and return the
+    // "?" / 1 value we've used on error above.
+    if (encoded_bytes.size() < start_idx + 1 + num_enc_bytes_of_str_len + str_len_in_bytes) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"String length took %0d bytes in encoded form and equalled %0d, so ",
+                            "the string length and contents take %0d bytes in total. But ",
+                            "encoded_bytes only has %0d elements after the start index of %0d."},
+                           1 + num_enc_bytes_of_str_len,
+                           str_len_in_bytes,
+                           1 + num_enc_bytes_of_str_len + str_len_in_bytes,
+                           encoded_bytes.size(),
+                           start_idx))
+      decoded_str = "?";
+      return 1;
+    end
+
+    // Index of the first byte after the encoded length (which will be the first byte of the encoded
+    // string if it is nonempty)
+    idx0 = start_idx + 1 + num_enc_bytes_of_str_len;
+
+    if (str_len_in_bytes == 0) begin
+      decoded_str = "";
+      return idx0;
+    end else begin
+      // Index of the last byte of the encoded string.
+      idx1 = idx0 + str_len_in_bytes - 1;
+
+      decoded_str = string'({>>{encoded_bytes[idx0:idx1]}});
+      return idx1 + 1;
+    end
+  endfunction
+
   // This function is used to calculate the fname and custom_str string values
   // from the data written to the PREFIX csrs
   //
@@ -1466,16 +1580,15 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   //  `encode_string(S) = left_encode(len(S)) || S`
   virtual function void get_fname_and_custom_str(ref string fname,
                                                  ref string custom_str);
+    // The bytes in the prefix words, in logical order of the stream (PREFIX_0..PREFIX_10 but
+    // lsb-first in each word).
     bit [7:0] prefix_bytes[$];
-    // The very first byte of each encoded string represents the number of bytes
-    // that make up the encoded string's length.
-    bit [7:0] num_enc_bytes_of_str_len;
 
-    bit [16:0] str_len;
+    // The number of bytes used for the encoded fname.
+    int unsigned fname_encoded_length;
 
-    byte fname_arr[];
-    byte custom_str_arr[];
-
+    // Reverse the bytes in each 32-bit word by reversing the list of 32-bit words and then
+    // reversing the list of bytes.
     prefix_bytes = {<< 32 {prefix}};
     prefix_bytes = {<< byte {prefix_bytes}};
 
@@ -1489,39 +1602,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     `uvm_info(`gfn, $sformatf("prefix: %0p", prefix), UVM_HIGH)
     `uvm_info(`gfn, $sformatf("prefix_bytes: %0p", prefix_bytes), UVM_HIGH)
 
-    // fname comes first in the PREFIX registers
+    // prefix_bytes should contain encode_string(N) || encode_string(S), which decodes to fname and
+    // then custom_str.
 
-    // This value should be 1
-    num_enc_bytes_of_str_len = prefix_bytes.pop_front();
-    `DV_CHECK_EQ(num_enc_bytes_of_str_len, 1,
-        $sformatf("Only one byte should be used to encode len(fname)"))
-
-    // The string length is always in terms of bits, need to convert to byte length
-    str_len = prefix_bytes.pop_front() / 8;
-
-    fname_arr  = new[str_len];
-    for (int i = 0; i < str_len; i++) begin
-      fname_arr[i] = byte'(prefix_bytes.pop_front());
-    end
-
-    // custom_str is next
-
-    num_enc_bytes_of_str_len = prefix_bytes.pop_front();
-
-    // convert string length to length in bytes
-    for (int i = 0; i < num_enc_bytes_of_str_len; i++) begin
-      str_len[(num_enc_bytes_of_str_len  - i - 1)*8 +: 8] = prefix_bytes.pop_front();
-    end
-    str_len /= 8;
-
-    custom_str_arr = new[str_len];
-    for (int i = 0; i < str_len; i++) begin
-      custom_str_arr[i] = byte'(prefix_bytes.pop_front());
-    end
-
-    // Convert the byte arrays into strings
-    fname = str_utils_pkg::bytes_to_str(fname_arr);
-    custom_str = str_utils_pkg::bytes_to_str(custom_str_arr);
+    fname_encoded_length = decode_string(0, prefix_bytes, fname);
+    void'(decode_string(fname_encoded_length, prefix_bytes, custom_str));
 
     `uvm_info(`gfn, $sformatf("decoded fname: %0s", fname), UVM_HIGH)
     `uvm_info(`gfn, $sformatf("decoded custom_str: %0s", custom_str), UVM_HIGH)
