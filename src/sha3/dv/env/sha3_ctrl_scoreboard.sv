@@ -1129,6 +1129,14 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     // - if we are using the xof version of kmac
     get_digest_len_and_xof(output_len_bytes, xof_en, msg);
 
+    // As a sanity check: make sure that output_len_bytes looks reasonable (non-negative and at most
+    // 10,000)
+    if (output_len_bytes < 0 || output_len_bytes >= 10000) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("Dubious output_len_bytes of %0d. Skipping test.", output_len_bytes))
+      return;
+    end
+
     if (cfg.en_cov) begin
       // sample configuration coverage, as only now do we know which KMAC variant is used
       // (xof/non-xof)
@@ -1438,35 +1446,15 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
         end
         output_len = capacity_bytes;
       end
-      // For SHAKE hashes, the output length isn't encoded anywhere, so we just return the amount
-      // that has been seen (and thus needs consuming from a model for comparison). To do this,
-      // count the number of states that have been seen (1 + m_observed_states.size()) and multiply
-      // by the capacity in bytes.
-      sha3_pkg::Shake: begin
+      // For SHAKE and cSHAKE hashes, the output length isn't encoded anywhere, so we just return
+      // the amount that has been seen (and thus needs consuming from a model for comparison). To do
+      // this, count the number of states that have been seen (1 + m_observed_states.size()) and
+      // multiply by the capacity in bytes.
+      //
+      // Note that this is different from the DV code in OpenTitan, where cSHAKE is only used with
+      // KMAC (which encodes the output length as a suffix to the input message).
+      sha3_pkg::Shake, sha3_pkg::CShake: begin
         output_len = (1 + m_observed_states.size()) * capacity_bytes;
-      end
-      // CShake is where things get more interesting.
-      // We need to essentially decode the encoded output length that is
-      // written to the msgfifo as a post-fix to the actual message.
-      sha3_pkg::CShake: begin
-        bit [MAX_ENCODE_WIDTH-1:0] full_len = '0;
-        // the very last byte written to msgfifo is the number of bytes that
-        // when put together represent the encoded output length.
-        bit [7:0] num_encoded_byte = msg.pop_back();
-
-        for (int i = 0; i < num_encoded_byte; i++) begin
-          full_len[i*8 +: 8] = msg.pop_back();
-        end
-
-        // We should set xof_en if `right_encode(0)` was written to the msgfifo after the message.
-        // right_encode(0) = '{'h0, 'h1}
-        if (num_encoded_byte == 1 && full_len == 0) begin
-          xof_en = 1;
-          // can't set  the output length to 0, so we fall back to the Shake behavior here
-          output_len = $size(digest_seen);
-        end else begin
-          output_len = full_len / 8;
-        end
       end
     endcase
   endfunction
