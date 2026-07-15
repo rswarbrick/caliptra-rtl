@@ -196,6 +196,15 @@ class sha3_ctrl_base_vseq extends dv_base_vseq #(
     custom_str_arr.size() == custom_str_len;
   }
 
+  // The cSHAKE algorithm is specified to always send a prefix (based on N and S) unless both N and
+  // S are empty, in which case it falls back to SHAKE.
+  //
+  // The RTL does not implement this feature, and instead requires the user to explicitly request a
+  // hash_mode of SHAKE. Make sure that the sequence avoids this corner.
+  constraint nonempty_ns_c {
+    if (hash_mode == sha3_pkg::CShake) { fname_len + custom_str_len > 0; }
+  }
+
   // constrains N and S to only be valid alphabet letters and space [A-Za-z]
   constraint prefix_is_char_c {
     foreach(fname_arr[i]) {
