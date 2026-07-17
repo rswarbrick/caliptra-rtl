@@ -47,25 +47,11 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   // with the internal `complete` signal to allow the scb easier handling of these scenarios.
   bit keccak_complete_cycle = 0;
 
-  // The CFG.entropy_ready field is only used to transition the entropy FSM into fetching entropy
-  // from the reset state, so we can only rely on writes to CFG.entropy_ready to update internal
-  // scoreboard state after a reset is seen.
-  //
-  // To that effect, we set this bit to 1 any time the scoreboard is reset, and will unset it
-  // the first time that CFG.entropy_ready is updated.
-  bit first_op_after_rst = 0;
-
   // CFG fields
   bit kmac_en;
   sha3_pkg::sha3_mode_e hash_mode;
   sha3_pkg::keccak_strength_e strength;
   entropy_mode_e entropy_mode = EntropyModeNone;
-  bit entropy_fast_process;
-  bit entropy_ready;
-
-  // Set this bit when entropy_ready is 1 and entropy_mode is EntropyModeEdn,
-  // to indicate that we are now waiting on the EDN to return valid entropy
-  bit in_edn_fetch = 0;
 
   // CMD fields
   bit [KmacCmdIdx:0] kmac_cmd;
@@ -1024,8 +1010,6 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     checked_kmac_cmd   = CmdNone;
     unchecked_kmac_cmd = CmdNone;
 
-    first_op_after_rst = 1;
-
     // status tracking bits
     sha3_idle         = ral.kmac_core.STATUS.sha3_idle.get_reset();
     sha3_absorb       = ral.kmac_core.STATUS.sha3_absorb.get_reset();
@@ -1053,14 +1037,10 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
   virtual function void clear_state();
     `uvm_info(`gfn, "clearing scoreboard state", UVM_HIGH)
 
-    if (first_op_after_rst) first_op_after_rst = 0;
-
     do_check_digest = 1;
 
     msg.delete();
     kmac_app_msg.delete();
-
-    set_entropy_fetch(0);
 
     kmac_err = '{valid: 1'b0,
                  code: kmac_pkg::ErrNone,
@@ -1142,8 +1122,7 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
       // (xof/non-xof)
       cov.sample_cfg(kmac_en, xof_en, strength, actual_hash_mode,
                      `gmv(ral.kmac_core.CFG_SHADOWED.msg_endianness),
-                     `gmv(ral.kmac_core.CFG_SHADOWED.state_endianness),
-                     entropy_mode, entropy_fast_process);
+                     `gmv(ral.kmac_core.CFG_SHADOWED.state_endianness));
 
       // sample coverage on the digest length
       if (cfg.en_cov) begin
@@ -1620,14 +1599,5 @@ class sha3_ctrl_scoreboard extends dv_base_scoreboard #(
     err_info.sw_cmd = kmac_cmd;
     err_info.sw_err = 1;
     return err_info;
-  endfunction
-
-  function void set_entropy_fetch(bit val);
-    if (val) begin
-      if (entropy_mode == EntropyModeEdn) in_edn_fetch = cfg.enable_masking;
-    end else begin
-      in_edn_fetch = 0;
-      `uvm_info(`gfn, "dropped in_edn_fetch", UVM_HIGH)
-    end
   endfunction
 endclass
