@@ -202,13 +202,6 @@
             '''
    }
    {
-      name: entropy_timer_cg
-      desc: '''
-            Cover the values for the entropy_period register's `prescaler` and `wait_timer` fields.
-            Cross these field ranges with whether the entropy EDN mode is on or off.
-            '''
-   }
-   {
       name: error_cg
       desc: '''
             Covers all error scenarios:

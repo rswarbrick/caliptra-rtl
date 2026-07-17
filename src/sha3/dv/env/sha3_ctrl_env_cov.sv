@@ -48,34 +48,24 @@ covergroup config_masked_cg with function sample(bit kmac, bit xof,
                                                  sha3_pkg::keccak_strength_e kstrength,
                                                  sha3_pkg::sha3_mode_e kmode,
                                                  bit msg_endianness,
-                                                 bit state_endianness,
-                                                 kmac_pkg::entropy_mode_e entr_mode,
-                                                 bit fast_entropy);
+                                                 bit state_endianness);
   `COMMON_CFG_CGS
-
-  entropy_mode: coverpoint entr_mode;
-
-  entropy_fast_process: coverpoint fast_entropy;
 
   // cross the various configuration settings
 
-  kmac_cross: cross kmac_en, xof_en, strength, msg_endian,
-                    state_endian, entropy_mode, entropy_fast_process {
+  kmac_cross: cross kmac_en, xof_en, strength, msg_endian, state_endian {
     `XOF_CROSS_CG(strength, binsof(kmac_en) intersect {1})
   }
 
-  cshake_cross: cross mode, strength, msg_endian, state_endian,
-                               entropy_mode, entropy_fast_process {
+  cshake_cross: cross mode, strength, msg_endian, state_endian {
     `XOF_CROSS_CG(strength, binsof(mode) intersect {sha3_pkg::CShake})
   }
 
-  shake_cross: cross mode, strength, msg_endian, state_endian,
-                              entropy_mode, entropy_fast_process {
+  shake_cross: cross mode, strength, msg_endian, state_endian {
     `XOF_CROSS_CG(strength, binsof(mode) intersect {sha3_pkg::Shake})
   }
 
-  sha3_cross: cross mode, strength, msg_endian, state_endian,
-                    entropy_mode, entropy_fast_process {
+  sha3_cross: cross mode, strength, msg_endian, state_endian {
     `SHA3_CROSS_CG(mode, strength)
   }
 endgroup
@@ -307,39 +297,16 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
                            sha3_pkg::keccak_strength_e kstrength,
                            sha3_pkg::sha3_mode_e kmode,
                            bit msg_endianness,
-                           bit state_endianness,
-                           kmac_pkg::entropy_mode_e entropy_mode,
-                           bit fast_entropy);
+                           bit state_endianness);
 
     if (cfg.enable_masking) begin
-      config_masked_cg.sample(kmac, xof, kstrength, kmode, msg_endianness,
-                              state_endianness, entropy_mode,
-                              fast_entropy);
+      config_masked_cg.sample(kmac, xof, kstrength, kmode, msg_endianness, state_endianness);
     end else begin
-      config_unmasked_cg.sample(kmac, xof, kstrength, kmode,
-                                msg_endianness, state_endianness);
+      config_unmasked_cg.sample(kmac, xof, kstrength, kmode, msg_endianness, state_endianness);
     end
   endfunction
 
-  covergroup entropy_timer_cg with function sample (bit [9:0]  prescaler,
-                                                    bit [15:0] wait_timer,
-                                                    bit        entropy_edn_mode);
-    prescaler_val: coverpoint prescaler {
-      bins zero_val   = {0};
-      bins lower_val  = {[1             : {9{1'b1}} / 2 - 1]};
-      bins higher_val = {[{9{1'b1}} / 2 : {9{1'b1}}]};
-    }
-    wait_timer_val: coverpoint wait_timer {
-      bins zero_val   = {0};
-      bins lower_val  = {[1              : {16{1'b1}} / 2 -1]};
-      bins higher_val = {[{16{1'b1}} / 2 : {16{1'b1}}]};
-    }
-    entropy_edn_mode_enabled: coverpoint entropy_edn_mode;
-    entropy_timer_cross: cross prescaler_val, wait_timer_val, entropy_edn_mode_enabled;
-  endgroup
-
   function new(string name, uvm_component parent);
-    kmac_app_e app_name = app_name.first;
     super.new(name, parent);
     // [instantiate covergroups here]
     msg_len_cg = new();
@@ -349,7 +316,6 @@ class sha3_ctrl_env_cov extends dv_base_env_cov #(.CFG_T(sha3_ctrl_env_cfg));
     sha3_status_cg = new();
     state_read_mask_cg = new();
     error_cg = new();
-    entropy_timer_cg = new();
     intr_cg = new();
     intr_test_cg = new();
     intr_pins_cg = new();
