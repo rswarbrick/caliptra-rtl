@@ -59,6 +59,13 @@ class sha3_ctrl_env_cfg extends dv_base_env_cfg #(.RAL_T(sha3_ctrl_dv_reg));
                    `UVM_REG_DATA_WIDTH,
                    `UVM_REG_BYTENABLE_WIDTH);
 
+    // Call set_is_ext_reg for each ext_reg in the register model. In OpenTitan, these are tracked
+    // in the RAL that is auto-generated from the hjson but the information isn't available in the
+    // RDL descriptions in caliptra-rtl, so we have to generate the calls manually.
+    ral.kmac_core.CFG_REGWEN.set_is_ext_reg(1);
+    ral.kmac_core.CMD.set_is_ext_reg(1);
+    ral.kmac_core.STATUS.set_is_ext_reg(1);
+
     // Configure CFG_SHADOWED by calling set_is_shadowed(), which will cause its predict functions
     // to do the correct thing and need a double UVM_PREDICT_WRITE before the value changes.
     ral.kmac_core.CFG_SHADOWED.set_is_shadowed();
