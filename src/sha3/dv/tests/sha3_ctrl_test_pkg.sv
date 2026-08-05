@@ -15,4 +15,5 @@ package sha3_ctrl_test_pkg;
   `include "sha3_ctrl_intr_test_test.svh"
   `include "sha3_ctrl_same_csr_outstanding_test.svh"
   `include "sha3_ctrl_rand_reset_test.svh"
+  `include "sha3_ctrl_csr_mem_rw_with_rand_reset_test.svh"
 endpackage

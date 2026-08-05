@@ -28,6 +28,8 @@ package sha3_ctrl_env_pkg;
   import ahb_agent_pkg::ahb_txn_sequencer_t;
   import ahb_agent_pkg::ahb_single_read_seq, ahb_agent_pkg::ahb_single_write_seq;
 
+  import ahb_csr_mem_rw_vseq_pkg::ahb_csr_mem_rw_vseq;
+
   // macro includes
   `include "uvm_macros.svh"
   `include "dv_macros.svh"
