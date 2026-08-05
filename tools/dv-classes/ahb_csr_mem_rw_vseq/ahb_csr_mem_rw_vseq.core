@@ -1,0 +1,23 @@
+CAPI=2:
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "lowrisc:dv:ahb_csr_mem_rw_vseq:0.1"
+description: "Sequence to write and read registers and memories over AHB"
+filesets:
+  files_dv:
+    depend:
+      - lowrisc:dv:dv_utils
+      - lowrisc:dv:dv_base_reg
+      - lowrisc:dv:csr_utils
+      - lowrisc:dv:ahb_agent
+      - lowrisc:dv:ahb_mem_rw_seq
+    files:
+      - ahb_csr_mem_rw_vseq_pkg.sv
+      - ahb_csr_mem_rw_vseq.svh: {is_include_file: true}
+    file_type: systemVerilogSource
+
+targets:
+  default:
+    filesets:
+      - files_dv
