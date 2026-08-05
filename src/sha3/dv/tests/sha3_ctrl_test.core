@@ -14,6 +14,7 @@ filesets:
       - sha3_ctrl_intr_test_test.svh: {is_include_file: true}
       - sha3_ctrl_same_csr_outstanding_test.svh: {is_include_file: true}
       - sha3_ctrl_rand_reset_test.svh: {is_include_file: true}
+      - sha3_ctrl_csr_mem_rw_with_rand_reset_test.svh: {is_include_file: true}
     file_type: systemVerilogSource
 
 targets:
