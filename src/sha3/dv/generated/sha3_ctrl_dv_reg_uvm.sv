@@ -717,7 +717,7 @@ package sha3_ctrl_dv_reg_uvm;
     // mem - kmac_reg::STATE
     class kmac_reg__STATE extends uvm_reg_block;
         `uvm_object_utils(kmac_reg__STATE)
-        rand uvm_mem m_mem;
+        rand dv_base_mem m_mem;
 
         function new(string name = "kmac_reg__STATE");
             super.new(name);
@@ -734,7 +734,7 @@ package sha3_ctrl_dv_reg_uvm;
     // mem - kmac_reg::MSG_FIFO
     class kmac_reg__MSG_FIFO extends uvm_reg_block;
         `uvm_object_utils(kmac_reg__MSG_FIFO)
-        rand uvm_mem m_mem;
+        rand dv_base_mem m_mem;
 
         function new(string name = "kmac_reg__MSG_FIFO");
             super.new(name);
@@ -1202,7 +1202,7 @@ package sha3_ctrl_dv_reg_uvm;
     // mem - sha3_reg::STATE
     class sha3_reg__STATE extends uvm_reg_block;
         `uvm_object_utils(sha3_reg__STATE)
-        rand uvm_mem m_mem;
+        rand dv_base_mem m_mem;
 
         function new(string name = "sha3_reg__STATE");
             super.new(name);
@@ -2000,7 +2000,7 @@ package sha3_ctrl_dv_reg_uvm;
     // mem - sha3_reg::MSG_FIFO
     class sha3_reg__MSG_FIFO extends uvm_reg_block;
         `uvm_object_utils(sha3_reg__MSG_FIFO)
-        rand uvm_mem m_mem;
+        rand dv_base_mem m_mem;
 
         function new(string name = "sha3_reg__MSG_FIFO");
             super.new(name);

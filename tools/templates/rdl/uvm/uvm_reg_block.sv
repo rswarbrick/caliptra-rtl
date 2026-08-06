@@ -51,7 +51,7 @@ virtual function void build();
         {%- elif isinstance(child, (RegfileNode, AddrmapNode)) -%}
             {{build_instance(child)|indent}}
         {%- elif isinstance(child, MemNode) -%}
-            {{uvm_reg_block_mem.build_instance(child)|indent}}
+            {{dv_base_mem.build_instance(child)|indent}}
         {%- endif -%}
     {%- endfor %}
 endfunction : build
