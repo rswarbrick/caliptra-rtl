@@ -74,6 +74,12 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
   // again.
   protected uvm_reg test_csrs[$];
 
+  // An associative array that maps a register to the types of CSR check that should be excluded for
+  // that register when running as part of this sequence.
+  //
+  // Set this by calling exclude_register().
+  protected csr_excl_type_e m_excluded_regs[uvm_reg];
+
   extern function new (string name="");
 
   // The pre_start task overrides that of uvm_sequence_base.
@@ -101,6 +107,11 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
   // returns false, but this allows more specialised sequences to work over more evenly sized
   // chunks.
   extern virtual protected function bit csr_excluded(uvm_reg csr);
+
+  // Mark the given register as excluded from a particular type of check in this particular
+  // sequence. This exclusion is used in parallel with any exclusion attached to the register
+  // itself.
+  extern function void exclude_register(uvm_reg register, csr_excl_type_e excl_type);
 endclass
 
 function csr_base_seq::new (string name="");
@@ -297,4 +308,17 @@ endfunction
 
 function bit csr_base_seq::csr_excluded(uvm_reg csr);
   return 1'b0;
+endfunction
+
+function void csr_base_seq::exclude_register(uvm_reg register, csr_excl_type_e excl_type);
+  if (m_excluded_regs.exists(register)) begin
+    `uvm_fatal(get_full_name(),
+               $sformatf({"Cannot add %0s exclusion to register '%0s', ",
+                          "which already has a %0s exclusion."},
+                         excl_type.name(),
+                         register.get_name(),
+                         m_excluded_regs[register].name()))
+  end
+
+  m_excluded_regs[register] = excl_type;
 endfunction
