@@ -18,11 +18,16 @@
 # do NOT `include it (see reg_gen.py header comment for rationale).
 KV_DEF=$CALIPTRA_ROOT/src/keyvault/rdl/kv_def.rdl
 
-# Jinja2 template dirs for the DV outputs; reg_gen.py is project-agnostic
-# and takes them explicitly.
-UVM_TPL=$CALIPTRA_ROOT/tools/templates/rdl/uvm
-
-REG_GEN="python3 tools/scripts/reg_gen.py --uvm-template-dir $UVM_TPL"
+# Define a variable for the reg_gen command, together with Jinja2
+# template dirs for the DV outputs; reg_gen.py is project-agnostic and
+# takes them explicitly.
+REG_GEN=$(cat <<EOF
+python3 tools/scripts/reg_gen.py \
+--uvm-template-dir $CALIPTRA_ROOT/tools/templates/rdl/uvm
+--cov-template-dir $CALIPTRA_ROOT/tools/templates/rdl/cov
+--smp-template-dir $CALIPTRA_ROOT/tools/templates/rdl/smp
+EOF
+)
 
 $REG_GEN $CALIPTRA_ROOT/src/keyvault/rdl/kv_reg.rdl                   \
     --emit-rtl --rtl-output $CALIPTRA_ROOT/src/keyvault/rtl/generated  \
