@@ -95,4 +95,8 @@ $REG_GEN $CALIPTRA_ROOT/src/aes/rdl/aes_clp_reg.rdl                   \
 
 $REG_GEN $CALIPTRA_ROOT/src/libs/rdl/interrupt_regs.rdl               \
     --emit-rtl --rtl-output $CALIPTRA_ROOT/src/libs/rtl/generated      \
-    --emit-dv  --dv-output  $CALIPTRA_ROOT/src/libs/dv/generated
+    --emit-dv  --dv-output  $CALIPTRA_ROOT/src/libs/dv/reg_model
+
+$REG_GEN $CALIPTRA_ROOT/src/entropy_src/data/entropy_src.rdl           \
+    --cov                                                              \
+    --emit-dv --dv-output  $CALIPTRA_ROOT/src/entropy_src/dv/reg_model
