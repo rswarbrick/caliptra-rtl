@@ -23,6 +23,8 @@ class entropy_src_env extends dv_base_env #(
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
+    string hdl_path;
+
     super.build_phase(phase);
 
     // Lookup the CSRNG auxiliary reset. (Is only applied at end-of-sim)
@@ -126,7 +128,13 @@ class entropy_src_env extends dv_base_env #(
       `uvm_fatal(get_full_name(), "failed to get assertion_vif from uvm_config_db")
     end
 
-    // config entropy_src path virtual interface
+    // Get the path to the module instance and pass it to our config object (allowing the config
+    // object to make HDL paths to its registers)
+    if (!uvm_config_db#(string)::get(this, "", "hdl_path", hdl_path)) begin
+      `uvm_fatal(get_full_name(), "Failed to get hdl_path from uvm_config_db.")
+    end
+    cfg.set_hdl_path(hdl_path);
+
     if (!uvm_config_db#(virtual entropy_src_path_if)::get(this, "", "entropy_src_path_vif",
          cfg.entropy_src_path_vif)) begin
       `uvm_fatal(`gfn, "failed to get entropy_src_path_vif from uvm_config_db")

@@ -274,6 +274,207 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
     // The byte-enable width should be zero: there is no wstrb value on the interface.
     initialize_ral(m_ahb_vif.addr_width, m_ahb_vif.data_width, 0);
 
+    ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_entropy_valid.q",
+                                       0, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_health_test_failed.q",
+                                       1, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_observe_fifo_ready.q",
+                                       2, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_fatal_err.q",
+                                       3, 1, BkdrRegPathRtl);
+
+    ral.INTERRUPT_ENABLE.add_path_slice("u_intr_enable_es_entropy_valid.q",
+                                        0, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_ENABLE.add_path_slice("u_intr_enable_es_health_test_failed.q",
+                                        1, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_ENABLE.add_path_slice("u_intr_enable_es_observe_fifo_ready.q",
+                                        2, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_ENABLE.add_path_slice("u_intr_enable_es_fatal_err.q",
+                                        3, 1, BkdrRegPathRtl);
+
+    ral.INTERRUPT_TEST.add_path_slice("u_intr_test_es_entropy_valid.q",
+                                      0, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_TEST.add_path_slice("u_intr_test_es_health_test_failed.q",
+                                      1, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_TEST.add_path_slice("u_intr_test_es_observe_fifo_ready.q",
+                                      2, 1, BkdrRegPathRtl);
+    ral.INTERRUPT_TEST.add_path_slice("u_intr_test_es_fatal_err.q",
+                                      3, 1, BkdrRegPathRtl);
+
+    // Note: Not connecting up ALERT_TEST, on the basis that Caliptra doesn't use the OpenTitan
+    //       alert mechanism and it's probably more helpful to get an error than have the sequence
+    //       do nothing.
+
+    ral.ME_REGWEN.add_path_slice("u_me_regwen.q", 0, 1, BkdrRegPathRtl);
+    ral.SW_REGUPD.add_path_slice("u_sw_regupd.q", 0, 1, BkdrRegPathRtl);
+    ral.REGWEN.add_path_slice("u_regwen.q", 0, 1, BkdrRegPathRtl);
+    ral.MODULE_ENABLE.add_path_slice("u_module_enable.q", 0, 4, BkdrRegPathRtl);
+
+    ral.CONF.add_path_slice("u_conf_fips_enable.q", 0, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_fips_flag.q", 4, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_rng_fips.q", 8, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_rng_bit_enable.q", 12, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_threshold_scope.q", 16, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_entropy_data_reg_enable.q", 20, 4, BkdrRegPathRtl);
+    ral.CONF.add_path_slice("u_conf_rng_bit_sel.q", 24, 8, BkdrRegPathRtl);
+
+    ral.ENTROPY_CONTROL.add_path_slice("u_entropy_control_es_route.q", 0, 4, BkdrRegPathRtl);
+    ral.ENTROPY_CONTROL.add_path_slice("u_entropy_control_es_type.q", 4, 4, BkdrRegPathRtl);
+
+    ral.ENTROPY_DATA.add_path_slice("u_entropy_data.qs", 0, 32, BkdrRegPathRtl);
+
+    ral.HEALTH_TEST_WINDOWS.add_path_slice("u_health_test_windows_fips_window.q",
+                                           0, 16, BkdrRegPathRtl);
+    ral.HEALTH_TEST_WINDOWS.add_path_slice("u_health_test_windows_bypass_window.q",
+                                           16, 16, BkdrRegPathRtl);
+
+    add_threshold_slices(ral.REPCNT_THRESHOLDS, "u_repcnt_thresholds");
+    add_watermark_slices(ral.REPCNT_HI_WATERMARKS, "u_repcnt_hi_watermarks");
+    ral.REPCNT_TOTAL_FAILS.add_path_slice("u_repcnt_total_fails.qs", 0, 32, BkdrRegPathRtl);
+
+    add_threshold_slices(ral.REPCNTS_THRESHOLDS, "u_repcnts_thresholds");
+    add_watermark_slices(ral.REPCNTS_HI_WATERMARKS, "u_repcnts_hi_watermarks");
+    ral.REPCNTS_TOTAL_FAILS.add_path_slice("u_repcnts_total_fails.qs", 0, 32, BkdrRegPathRtl);
+
+    add_slices_for_test_regs(ral.ADAPTP_HI_THRESHOLDS,
+                             ral.ADAPTP_HI_WATERMARKS,
+                             ral.ADAPTP_HI_TOTAL_FAILS,
+                             "u_adaptp_hi");
+
+    add_slices_for_test_regs(ral.ADAPTP_LO_THRESHOLDS,
+                             ral.ADAPTP_LO_WATERMARKS,
+                             ral.ADAPTP_LO_TOTAL_FAILS,
+                             "u_adaptp_lo");
+
+    add_threshold_slices(ral.BUCKET_THRESHOLDS, "u_bucket_thresholds");
+    add_watermark_slices(ral.BUCKET_HI_WATERMARKS, "u_bucket_hi_watermarks");
+    ral.REPCNTS_TOTAL_FAILS.add_path_slice("u_bucket_total_fails.qs", 0, 32, BkdrRegPathRtl);
+
+    add_slices_for_test_regs(ral.MARKOV_HI_THRESHOLDS,
+                             ral.MARKOV_HI_WATERMARKS,
+                             ral.MARKOV_HI_TOTAL_FAILS,
+                             "u_markov_hi");
+    add_slices_for_test_regs(ral.MARKOV_LO_THRESHOLDS,
+                             ral.MARKOV_LO_WATERMARKS,
+                             ral.MARKOV_LO_TOTAL_FAILS,
+                             "u_markov_lo");
+    add_slices_for_test_regs(ral.EXTHT_HI_THRESHOLDS,
+                             ral.EXTHT_HI_WATERMARKS,
+                             ral.EXTHT_HI_TOTAL_FAILS,
+                             "u_extht_hi");
+    add_slices_for_test_regs(ral.EXTHT_LO_THRESHOLDS,
+                             ral.EXTHT_LO_WATERMARKS,
+                             ral.EXTHT_LO_TOTAL_FAILS,
+                             "u_extht_lo");
+
+    ral.ALERT_THRESHOLD.add_path_slice("u_alert_threshold_alert_threshold.q",
+                                       0, 16, BkdrRegPathRtl);
+    ral.ALERT_THRESHOLD.add_path_slice("u_alert_threshold_alert_threshold_inv.q",
+                                       16, 16, BkdrRegPathRtl);
+
+    ral.ALERT_SUMMARY_FAIL_COUNTS.add_path_slice("u_alert_summary_fail_counts.qs",
+                                                 0, 16, BkdrRegPathRtl);
+
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_repcnt_fail_count.qs",
+                                         4, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_adaptp_hi_fail_count.qs",
+                                         8, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_adaptp_lo_fail_count.qs",
+                                         12, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_bucket_fail_count.qs",
+                                         16, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_markov_hi_fail_count.qs",
+                                         20, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_markov_lo_fail_count.qs",
+                                         24, 4, BkdrRegPathRtl);
+    ral.ALERT_FAIL_COUNTS.add_path_slice("u_alert_fail_counts_repcnts_fail_count.qs",
+                                         28, 4, BkdrRegPathRtl);
+
+    ral.EXTHT_FAIL_COUNTS.add_path_slice("u_extht_fail_counts_extht_hi_fail_count.qs",
+                                         0, 4, BkdrRegPathRtl);
+    ral.EXTHT_FAIL_COUNTS.add_path_slice("u_extht_fail_counts_extht_lo_fail_count.qs",
+                                         4, 4, BkdrRegPathRtl);
+
+    ral.FW_OV_CONTROL.add_path_slice("u_fw_ov_control_fw_ov_mode.qs",
+                                     0, 4, BkdrRegPathRtl);
+    ral.FW_OV_CONTROL.add_path_slice("u_fw_ov_control_fw_ov_entropy_insert.qs",
+                                     4, 4, BkdrRegPathRtl);
+
+    ral.FW_OV_SHA3_START.add_path_slice("u_fw_ov_sha3_start.q", 0, 4, BkdrRegPathRtl);
+
+    ral.FW_OV_WR_FIFO_FULL.add_path_slice("u_fw_ov_wr_fifo_full.qs", 0, 1, BkdrRegPathRtl);
+    ral.FW_OV_RD_FIFO_OVERFLOW.add_path_slice("u_fw_ov_rd_fifo_overflow.qs", 0, 1, BkdrRegPathRtl);
+
+    ral.FW_OV_RD_DATA.add_path_slice("u_fw_ov_rd_data.q", 0, 32, BkdrRegPathRtl);
+    ral.FW_OV_WR_DATA.add_path_slice("u_fw_ov_wr_data.q", 0, 32, BkdrRegPathRtl);
+
+    ral.OBSERVE_FIFO_THRESH.add_path_slice("u_observe_fifo_thresh.qs", 0, 6, BkdrRegPathRtl);
+
+    ral.OBSERVE_FIFO_DEPTH.add_path_slice("u_observe_fifo_depth.qs", 0, 6, BkdrRegPathRtl);
+
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_entropy_fifo_depth.qs", 0, 2, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_sha3_fsm.qs", 3, 3, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_sha3_block_pr.qs", 6, 1, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_sha3_squeezing.qs", 7, 1, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_sha3_absorbed.qs", 8, 1, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_sha3_err.qs", 9, 1, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_main_sm_idle.qs", 16, 1, BkdrRegPathRtl);
+    ral.DEBUG_STATUS.add_path_slice("u_debug_status_main_sm_boot_done.qs", 17, 1, BkdrRegPathRtl);
+
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_fips_enable_field_alert.qs",
+                                       0, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_entropy_data_reg_en_field_alert.qs",
+                                       1, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_module_enable_field_alert.qs",
+                                       2, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_threshold_scope_field_alert.qs",
+                                       3, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_rng_bit_enable_field_alert.qs",
+                                       5, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_fw_ov_sha3_start_field_alert.qs",
+                                       7, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_fw_ov_mode_field_alert.qs",
+                                       8, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_fw_ov_entropy_insert_field_alert.qs",
+                                       9, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_route_field_alert.qs",
+                                       10, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_type_field_alert.qs",
+                                       11, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_main_sm_alert.qs",
+                                       12, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_bus_cmp_alert.qs",
+                                       13, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_thresh_cfg_alert.qs",
+                                       14, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_fw_ov_wr_alert.qs",
+                                       15, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_es_fw_ov_disable_alert.qs",
+                                       16, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_fips_flag_field_alert.qs",
+                                       17, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_rng_fips_field_alert.qs",
+                                       18, 1, BkdrRegPathRtl);
+    ral.RECOV_ALERT_STS.add_path_slice("u_recov_alert_sts_postht_entropy_drop_alert.qs",
+                                       31, 1, BkdrRegPathRtl);
+
+    ral.ERR_CODE.add_path_slice("u_err_code_sfifo_esrng_err.qs", 0, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_sfifo_distr_err.qs", 1, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_sfifo_observe_err.qs", 2, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_sfifo_esfinal_err.qs", 3, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_es_ack_sm_err.qs", 20, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_es_main_sm_err.qs", 21, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_es_cntr_err.qs", 22, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_sha3_state_err.qs", 23, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_sha3_rst_storage_err.qs", 24, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_fifo_write_err.qs", 28, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_fifo_read_err.qs", 29, 1, BkdrRegPathRtl);
+    ral.ERR_CODE.add_path_slice("u_err_code_fifo_state_err.qs", 30, 1, BkdrRegPathRtl);
+
+    ral.ERR_CODE_TEST.add_path_slice("u_err_code_test.q", 0, 5, BkdrRegPathRtl);
+
+    ral.MAIN_SM_STATE.add_path_slice("u_main_sm_state.q", 0, 9, BkdrRegPathRtl);
+
     dut_cfg = entropy_src_dut_cfg::type_id::create("dut_cfg");
 
     // create agent config objs
@@ -283,6 +484,41 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
                             type_id::create("m_csrng_agent_cfg");
     m_aes_halt_agent_cfg  = push_pull_agent_cfg#(.HostDataWidth(0))::
                             type_id::create("m_aes_halt_agent_cfg");
+  endfunction
+
+  // Add path slices for the two 16-bit fields in a thresholds register
+  //
+  // The name_root string is an HDL path, relative to u_reg, for the root of the prim_subreg_ext
+  // instance names for the register. For example, if name_root is "u_repcnt_thresholds" then this
+  // will point at u_repcnt_thresholds_fips_thresh and u_repcnt_thresholds_bypass_thresh.
+  local function void add_threshold_slices(dv_base_reg register,
+                                           string      name_root);
+    register.add_path_slice({name_root, "_fips_thresh.qs"}, 0, 16, BkdrRegPathRtl);
+    register.add_path_slice({name_root, "_bypass_thresh.qs"}, 16, 16, BkdrRegPathRtl);
+  endfunction
+
+  // Add path slices for the two 16-bit fields in a watermarks register
+  //
+  // The name_root string is an HDL path, relative to u_reg, for the root of the prim_subreg_ext
+  // instance names for the register. For example, if name_root is "u_repcnt_hi_watermarks" then
+  // this will point at u_repcnt_hi_watermarks_fips_watermark and
+  // u_repcnt_hi_watermarks_bypass_watermark.
+  local function void add_watermark_slices(dv_base_reg register,
+                                           string      name_root);
+    register.add_path_slice({name_root, "_fips_watermark.qs"}, 0, 16, BkdrRegPathRtl);
+    register.add_path_slice({name_root, "_bypass_watermark.qs"}, 16, 16, BkdrRegPathRtl);
+  endfunction
+
+  // Add path slices for the three types of register associated with a health test. The name root is
+  // the base of the names of the caliptra_prim_subreg_ext instances. For example, if name_root is
+  // "u_repnt" then this will point at instances including u_repcnt_thresholds_fips_thresh.
+  local function void add_slices_for_test_regs(dv_base_reg thresholds_reg,
+                                               dv_base_reg watermarks_reg,
+                                               dv_base_reg total_fails_reg,
+                                               string      name_root);
+    add_threshold_slices(thresholds_reg, {name_root, "_thresholds"});
+    add_watermark_slices(watermarks_reg, {name_root, "_watermarks"});
+    total_fails_reg.add_path_slice({name_root, "_total_fails.qs"}, 0, 32, BkdrRegPathRtl);
   endfunction
 
   virtual function string convert2string();
@@ -359,6 +595,16 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
   // generate observe_data
   function bit generates_observe_data(mubi4_t fw_read_enable);
      return (otp_en_es_fw_over == MuBi8True) && (fw_read_enable == MuBi4True);
+  endfunction
+
+  // Provide the HDL path for the entropy_src instance.
+  function void set_hdl_path(string hdl_path);
+    import dv_base_reg_pkg::bkdr_reg_path_e, dv_base_reg_pkg::BkdrRegPathRtl;
+
+    bkdr_reg_path_e std_kind = BkdrRegPathRtl;
+
+    ral.set_hdl_path_root({hdl_path, ".u_reg"}, std_kind.name());
+    ral.set_default_hdl_path(std_kind.name());
   endfunction
 
 endclass
