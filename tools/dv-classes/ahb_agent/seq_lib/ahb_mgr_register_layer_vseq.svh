@@ -29,6 +29,12 @@ class ahb_mgr_register_layer_vseq extends uvm_sequence;
   // Configure this by calling set_has_hprot().
   local bit          m_has_hprot = 1;
 
+  // The address width used for the AHB bus itself, which defaults to 64 (the maximum possible for
+  // AHB)
+  //
+  // Set this by calling set_addr_width().
+  local int unsigned m_addr_width = 64;
+
   extern function new(string name="");
   extern task body();
 
@@ -43,6 +49,11 @@ class ahb_mgr_register_layer_vseq extends uvm_sequence;
   // Configure whether the AHB bus has an HPROT signal. If has_hprot is false, sequences are
   // constrained to generate items with m_prot = 0.
   extern function void set_has_hprot(bit has_hprot);
+
+  // Set the address width used by the AHB bus. The layer sequence will extract just this many bits
+  // from the bottom of uvm_reg_bus_op addresses, which frees virtual sequences using this one from
+  // having to extract the bottom bits themselves.
+  extern function void set_addr_width(int unsigned width);
 
   // Send the request item through a layered sequence, passing any information back by modifying the
   // item argument (by modifying its m_rw field).
@@ -100,6 +111,10 @@ function void ahb_mgr_register_layer_vseq::set_has_hprot(bit has_hprot);
   m_has_hprot = has_hprot;
 endfunction
 
+function void ahb_mgr_register_layer_vseq::set_addr_width(int unsigned width);
+  m_addr_width = width;
+endfunction
+
 task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
   // This task handles the bulk of the work that would normally be done by a uvm_reg_adapter's
   // reg2bus and bus2reg functions.
@@ -117,6 +132,12 @@ task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
   // The strb value to send on a write transaction, or the byte mask to use with rdata in a read
   // response. This takes size and byte_en into account.
   bit [127:0] byte_mask = strb_from_size & item.m_rw.byte_en;
+
+  // A mask that is set for the bottom m_addr_width bits
+  bit [63:0]  addr_mask = (m_addr_width >= 64) ? '1 : ((64'd1 << m_addr_width) - 1);
+
+  // Truncate the address to the size that can actually be represented on the AHB interface.
+  bit [63:0]  truncated_addr = item.m_rw.addr & addr_mask;
 
   int unsigned subordinate_idx;
 
@@ -145,7 +166,7 @@ task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
       if (!read_seq.randomize() with {
             m_subordinate_idx == local::subordinate_idx;
             m_size            == local::hsize;
-            m_addr            == local::item.m_rw.addr;
+            m_addr            == local::truncated_addr;
           }) begin
         `uvm_fatal(get_full_name(), "Failed to randomise read_seq.")
       end
@@ -175,7 +196,7 @@ task ahb_mgr_register_layer_vseq::send_op_item(ahb_reg_op_item item);
       if (!write_seq.randomize() with {
             m_subordinate_idx == local::subordinate_idx;
             m_size            == local::hsize;
-            m_addr            == local::item.m_rw.addr;
+            m_addr            == local::truncated_addr;
             m_wdata           == local::item.m_rw.data;
             m_wstrb           == local::byte_mask;
           }) begin

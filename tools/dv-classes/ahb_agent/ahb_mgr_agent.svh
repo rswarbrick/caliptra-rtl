@@ -191,6 +191,7 @@ task ahb_mgr_agent::run_layered_register_vseq();
   layer_vseq.set_sequencers(m_layered_reg_sequencer, m_sequencer);
   layer_vseq.set_subordinates(m_subordinate_ranges);
   layer_vseq.set_has_hprot(m_vif.hprot_width != 0);
+  layer_vseq.set_addr_width(m_vif.addr_width);
 
   layer_vseq.start(null);
 
