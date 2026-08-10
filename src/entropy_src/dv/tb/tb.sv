@@ -198,6 +198,10 @@ module tb;
     // with index 0.
     uvm_config_db#(int unsigned)::set(null, "*.env", "ahb_subordinate_index", 0);
 
+    // Tell the environment the HDL path to the entropy_src instance. This will allow it to
+    // construct HDL paths for back-door accesses in the generated reg_block.
+    uvm_config_db#(string)::set(null, "*.env", "hdl_path", "tb.dut");
+
     // The rng_if (which mimics the AST RNG) is expected to drop RNG inputs even if the
     // DUT is not ready.
     $assertoff(0, tb.rng_if.H_DataStableWhenValidAndNotReady_A);
