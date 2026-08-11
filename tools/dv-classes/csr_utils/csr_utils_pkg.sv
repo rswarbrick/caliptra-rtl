@@ -312,15 +312,38 @@ package csr_utils_pkg;
                         input  uint               timeout_ns = default_timeout_ns,
                         input  uvm_reg_map        map = null,
                         input  uvm_reg_frontdoor  user_ftdr = default_user_frontdoor);
+    // A structure that holds ptr as either a register or a field, together with an lsb and mask
+    // that can be used to extract field read data from a register read.
+    csr_field_t     csr_or_fld;
+
+    // The register that contains ptr. If ptr is a register, parent_reg is ptr itself. If ptr is
+    // a field, parent_reg is the register that contains the field (found by calling
+    // get_parent).
+    uvm_reg         parent_reg;
+
+    // The rdata from the register read
+    uvm_reg_data_t reg_rdata;
+
+    // The response status from csr_rd_sub (which is ignored by this task)
     uvm_status_e status;
+
+    csr_or_fld = decode_csr_or_field(ptr);
+    if (csr_or_fld.csr != null) begin
+      parent_reg = csr_or_fld.csr;
+    end else begin
+      parent_reg = csr_or_fld.field.get_parent();
+    end
+
     if (blocking) begin
-      csr_rd_sub(.ptr(ptr), .value(value), .status(status), .check(check), .path(path),
+      csr_rd_sub(.ptr(parent_reg), .value(reg_rdata), .status(status), .check(check), .path(path),
                  .backdoor(backdoor), .timeout_ns(timeout_ns), .map(map), .user_ftdr(user_ftdr));
+      value = (reg_rdata >> csr_or_fld.shift) & csr_or_fld.mask;
     end else begin
       `DV_CHECK_EQ(backdoor, 0, "Don't enable backdoor with blocking = 0", error, $sformatf("%m"))
       fork
-        csr_rd_sub(.ptr(ptr), .value(value), .status(status), .check(check), .path(path),
+        csr_rd_sub(.ptr(parent_reg), .value(reg_rdata), .status(status), .check(check), .path(path),
                    .backdoor(backdoor), .timeout_ns(timeout_ns), .map(map), .user_ftdr(user_ftdr));
+        value = (reg_rdata >> csr_or_fld.shift) & csr_or_fld.mask;
       join_none
       // Add #0 to ensure that this thread starts executing before any subsequent call
       #0;
