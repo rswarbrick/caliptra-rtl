@@ -21,6 +21,7 @@ package entropy_src_env_pkg;
 
   import ahb_agent_pkg::ahb_mgr_agent;
   import ahb_agent_pkg::ahb_txn_item;
+  import ahb_agent_pkg::ahb_txn_request_item;
   import ahb_agent_pkg::ahb_mgr_reg_adapter;
 
   import reset_agent_pkg::reset_agent;
@@ -418,6 +419,8 @@ package entropy_src_env_pkg;
 
   endfunction
 
+  // An import that will be used for AHB transaction items (generated at the end of a transaction)
+  `uvm_analysis_imp_decl(_ahb_txn)
 
   // package sources
   `include "entropy_src_dut_cfg.sv"
