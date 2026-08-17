@@ -10,6 +10,18 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
   `uvm_component_utils(entropy_src_scoreboard)
 
+  // An import for AHB transactions.
+  uvm_analysis_imp_ahb_txn #(ahb_txn_item, entropy_src_scoreboard) m_ahb_txn_imp;
+
+  // The width of addresses on the monitored AHB interface. This defaults to 64 (full width), but
+  // will be configured with a smaller value by the environment to match the size of the actual
+  // interface.
+  //
+  // Monitored AHB transactions (that arrive through m_ahb_txn_imp) will have just that many of the
+  // bottom bits of the address. As such, the register block's base address needs truncating in the
+  // same way to allow register lookups by address.
+  int unsigned m_ahb_addr_width = 64;
+
   // TODO (Cleanup): Put the DUT-internal constant (`PreCondWidth`) into a package and use it here.
   localparam int SHACondWidth     = 64;
   localparam int ObserveFifoDepth = entropy_src_reg_pkg::ObserveFifoDepth;
@@ -188,7 +200,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     FWOVDisable
   } reset_event_e;
 
-  `uvm_component_new
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    m_ahb_txn_imp = new("m_ahb_txn_imp", this);
+  endfunction
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -1239,10 +1254,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
   endfunction
 
-  // TODO: OpenTitan's scoreboards have a "process_tl_access" task here, which is used to track all
-  //       register accesses. Resurrect that tracking with something that subscribes to sequence
-  //       items from the AHB agent.
-
   task monitor_fw_ov_write_exceptions(virtual entropy_subsys_fifo_exception_if#(1) vif,
                                       bit active_in_fips_mode);
     bit fw_ov_mode, fw_ov_insert, fips_enabled, es_route, es_type, is_fips_mode;
@@ -1888,4 +1899,112 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     // so we cannot and do not perform them in the scoreboard.
   endfunction
 
+  // If this is a bus transaction that addresses a register, return the model of that register.
+  //
+  // If HSIZE means that the transaction doesn't address exactly the bits of the register, this
+  // generates a warning (because the scoreboard might not know how to model the access).
+  function dv_base_reg register_for_txn_request(ahb_txn_request_item bus_req);
+    uvm_reg_map    map;
+    uvm_reg_addr_t addr_mask;
+    uvm_reg_addr_t narrow_base_addr;
+    uvm_reg_addr_t reconstructed_wide_addr;
+    uvm_reg        register;
+    dv_base_reg    dv_register;
+    int unsigned   msb;
+
+    map = ral.get_default_map().get_root_map();
+
+    // Get the address of the base of ral's register map, but narrowed down to the address width of
+    // the AHB interface that is being monitored.
+    //
+    // Suppose that the block actually only has 16 bytes of registers, which can be accessed with a
+    // 4-bit byte offset. Maybe the AHB has a wider 8-bit address width, and the larger system has a
+    // much wider address range, with the block at address 'h210.
+    //
+    // Decoding addresses within the block is fine because the entire range is address by just the
+    // bottom address nibble. An access to the fifth byte (at address 'h214) will be seen by the AHB
+    // monitor as accessing address 'h14. To look up a register at that address, we have to subtract
+    // the base address of the block, narrowed to the bits visible from the AHB interface.
+    //
+    // In this example, the addr_mask variable would be 'hff and narrow_base_addr would be 'h10.
+    addr_mask = ((m_ahb_addr_width < $bits(uvm_reg_addr_t)) ?
+                 ((uvm_reg_addr_t'(1) << m_ahb_addr_width) - 1) :
+                 '1);
+    narrow_base_addr = map.get_base_addr() & addr_mask;
+
+    // At this point, we can find an offset from the start of the register block by subtracting
+    // narrow_base_addr. But uvm_reg_map::get_reg_by_offset expects an address, not an offset (a
+    // rather confusing name...) As such, we want to addr map.get_base_addr() back again, which
+    // gives the wide address that would have been mapped to this narrow address
+    reconstructed_wide_addr = bus_req.m_addr - narrow_base_addr + map.get_base_addr();
+
+    register = map.get_reg_by_offset(reconstructed_wide_addr);
+    if (register == null) return null;
+
+    if (!$cast(dv_register, register)) begin
+      `uvm_error(get_full_name(),
+                 $sformatf("The %0s register is not a dv_base_reg.", register.get_name()))
+      return null;
+    end
+
+    msb = dv_register.get_msb_pos();
+
+    // At this point, msb is the highest bit of the register that is contained in a field. We know
+    // that bus_req.m_addr targets the bottom byte of the register, so must check that
+    // (1 << bus_req.m_size) bytes covers the MSB.
+    if (msb >= (1 << bus_req.m_size) * 8) begin
+      `uvm_error(get_full_name(),
+                 $sformatf({"Bus access to 0x%0h addresses the %0s register, ",
+                            "whose highest field has msb %0d. But HSIZE is %0d so ",
+                            "the access only covers the bits with indices up to %0d. ",
+                            "Partial register access is not yet modelled in the scoreboard."},
+                           bus_req.m_addr,
+                           dv_register.get_name(),
+                           msb,
+                           bus_req.m_size,
+                           (1 << bus_req.m_size) * 8 - 1))
+    end
+
+    return dv_register;
+  endfunction
+
+  // The write function for m_ahb_txn_imp, which is called for every bus transaction reported by the
+  // monitor in the AHB agent.
+  function void write_ahb_txn(ahb_txn_item bus_txn);
+    uvm_reg register;
+
+    // If the transaction didn't run to completion (so didn't get a response), we ignore it: there
+    // was probably a reset in the middle of the transaction.
+    if (bus_txn.m_response == null) return;
+
+    // If the m_trans value for the request was TransIdle or TransBusy, the manager was either
+    // taking a break between bursts or pausing a sequence of beats. The monitor shouldn't be
+    // generating these items, but they definitely aren't relevant for the scoreboard anyway: ignore
+    // them.
+    if (bus_txn.m_request.m_trans inside {ahb_agent_pkg::TransIdle,
+                                          ahb_agent_pkg::TransBusy}) return;
+
+    register = register_for_txn_request(bus_txn.m_request);
+    if (register != null) begin
+      on_reg_txn(bus_txn, register);
+    end else begin
+      if (!bus_txn.m_response.m_resp) begin
+        `uvm_error(get_full_name(),
+                   $sformatf({"Bus transaction to address 0x%0h (where there is no register) ",
+                              "didn't get an error response."},
+                             bus_txn.m_request.m_addr))
+        return;
+      end
+    end
+  endfunction
+
+  // Called with a complete, successful monitored bus transaction item and the register that it
+  // addressed.
+  function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
+    `uvm_info("reg_access",
+              $sformatf("Saw %0s register %0s",
+                        txn.m_request.m_write ? "write to" : "read from",
+                        register.get_name()),
+              UVM_LOW)
+  endfunction
 endclass

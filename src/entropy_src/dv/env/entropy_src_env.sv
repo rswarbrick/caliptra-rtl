@@ -61,6 +61,11 @@ class entropy_src_env extends dv_base_env #(
     uvm_config_db#(virtual ahb_if)::set(this, "m_ahb_mgr_agent*", "vif", cfg.m_ahb_vif);
     m_ahb_mgr_agent = ahb_mgr_agent::type_id::create("m_ahb_mgr_agent", this);
 
+    // Passing the address width of the AHB interface to the scoreboard, so that it knows how to
+    // interpret offsets relative to a base address that isn't itself representable on the
+    // interface.
+    scoreboard.m_ahb_addr_width = cfg.m_ahb_vif.addr_width;
+
     m_rng_agent = push_pull_agent#(.HostDataWidth(entropy_src_pkg::RNG_BUS_WIDTH))::type_id::
                   create("m_rng_agent", this);
     uvm_config_db#(push_pull_agent_cfg#(.HostDataWidth(entropy_src_pkg::RNG_BUS_WIDTH)))::set
@@ -176,6 +181,7 @@ class entropy_src_env extends dv_base_env #(
     end
 
     m_ahb_mgr_agent.m_transaction_port.connect(m_reg_predictor.bus_in);
+    m_ahb_mgr_agent.m_transaction_port.connect(scoreboard.m_ahb_txn_imp);
   endfunction
 
   function reset_agent get_reset_agent();
