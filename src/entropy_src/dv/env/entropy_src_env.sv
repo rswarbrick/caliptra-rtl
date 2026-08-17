@@ -20,7 +20,12 @@ class entropy_src_env extends dv_base_env #(
   // Agent to access the AHB interface
   local ahb_mgr_agent m_ahb_mgr_agent;
 
-  `uvm_component_new
+  // A reg_predictor that will be connected to the register model in cfg
+  local uvm_reg_predictor #(ahb_txn_item) m_reg_predictor;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
 
   function void build_phase(uvm_phase phase);
     string hdl_path;
@@ -99,6 +104,10 @@ class entropy_src_env extends dv_base_env #(
     // CSRNG drops its ack in the cycle after entropy_src has dropped its req.
     cfg.m_aes_halt_agent_cfg.ack_lo_delay_max = 1;
 
+    m_reg_predictor = uvm_reg_predictor#(ahb_txn_item)::type_id::create("m_reg_predictor", this);
+    m_reg_predictor.adapter = ahb_mgr_reg_adapter::type_id::create("adapter");
+    m_reg_predictor.map = cfg.ral.default_map;
+
     if (!uvm_config_db#(virtual entropy_subsys_fifo_exception_if#(1))::get(this, "",
                         "precon_fifo_vif", cfg.precon_fifo_vif)) begin
       `uvm_fatal(get_full_name(), "failed to get precon_fifo_vif from uvm_config_db")
@@ -165,6 +174,8 @@ class entropy_src_env extends dv_base_env #(
     foreach (maps[i]) begin
       m_ahb_mgr_agent.register_subordinate_for_map(maps[i], cfg.m_subordinate_idx);
     end
+
+    m_ahb_mgr_agent.m_transaction_port.connect(m_reg_predictor.bus_in);
   endfunction
 
   function reset_agent get_reset_agent();
