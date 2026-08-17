@@ -18,7 +18,10 @@ package entropy_src_env_pkg;
   import dv_base_reg_pkg::dv_base_reg;
 
   import dv_base_mubi_pkg::get_rand_mubi4_val;
+
   import ahb_agent_pkg::ahb_mgr_agent;
+  import ahb_agent_pkg::ahb_txn_item;
+  import ahb_agent_pkg::ahb_mgr_reg_adapter;
 
   import reset_agent_pkg::reset_agent;
 
