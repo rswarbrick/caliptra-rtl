@@ -153,6 +153,10 @@ class entropy_src_env extends dv_base_env #(
          cfg.entropy_src_path_vif)) begin
       `uvm_fatal(`gfn, "failed to get entropy_src_path_vif from uvm_config_db")
     end
+    if (!uvm_config_db#(virtual entropy_src_core_if)::get(this, "", "core_vif",
+                                                          cfg.m_core_vif)) begin
+      `uvm_fatal(get_full_name(), "Failed to get core_vif from uvm_config_db.")
+    end
 
     if (cfg.en_cov) begin
       virtual entropy_src_cov_if cov_vif;
@@ -162,6 +166,7 @@ class entropy_src_env extends dv_base_env #(
       end
 
       cov.set_cov_vif(cov_vif);
+      cov.set_core_vif(cfg.m_core_vif);
     end
   endfunction
 

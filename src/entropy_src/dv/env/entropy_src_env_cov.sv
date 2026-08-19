@@ -15,6 +15,9 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
   // coverage collector. Set this by calling set_cov_vif() before this module's build_phase.
   local virtual entropy_src_cov_if m_cov_vif;
 
+  // A handle to an entropy_src_core_vif, which has been bound into an entropy_src_core instance.
+  // Set this by calling set_core_vif() before this module's build_phase.
+  local virtual entropy_src_core_if m_core_vif;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -24,6 +27,7 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
     super.build_phase(phase);
 
     if (m_cov_vif == null) `uvm_fatal(get_full_name(), "Coverage interface has not been set.")
+    if (m_core_vif == null) `uvm_fatal(get_full_name(), "Core interface has not been set.")
   endfunction
 
   // Set m_cov_vif. This must be called before build_phase.
@@ -41,6 +45,11 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
     return cfg.ral.MODULE_ENABLE.MODULE_ENABLE.get_mirrored_value() == MuBi4True;
   endfunction
 
+  // Set m_core_vif. This must be called before build_phase.
+  function void set_core_vif(virtual entropy_src_core_if core_vif);
+    m_core_vif = core_vif;
+  endfunction
+
   // A transaction has just tried to write a register that is locked by REGWEN being false.
   function void on_write_to_locked_register(ahb_txn_item txn, uvm_reg register);
     `uvm_info(get_full_name(),
@@ -55,4 +64,22 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
                                     is_module_enabled());
     end
   endfunction
+
+  // The module_enable register has just been written, by software trying to enable/disable the
+  // module.
+  //
+  //  requested_enable: True if the value being written to MODULE_ENABLE is MuBi4True.
+  function void on_module_enable_write(bit requested_enable);
+    import entropy_src_main_sm_pkg::state_e;
+
+    // Get the current state machine state. This is reflected in the registers as MAIN_SM_STATE, but
+    // can be snooped even more easily through m_core_vif.
+    state_e main_sm_state = state_e'(m_core_vif.es_main_sm_state_i);
+
+    // Get the value of me_regwen (a regwen bit for the MODULE_ENABLE register)
+    bit me_regwen = cfg.ral.ME_REGWEN.ME_REGWEN.get_mirrored_value();
+
+    m_cov_vif.cg_sw_disable_sample(me_regwen, requested_enable, main_sm_state);
+  endfunction
+
 endclass
