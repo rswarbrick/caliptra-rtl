@@ -29,6 +29,9 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
   // An interface through which sequences can enable/disable a particular set of assertions
   virtual entropy_src_assertion_if m_assertion_vif;
 
+  // An interface that can be used to snoop on signals inside entropy_src_core
+  virtual entropy_src_core_if m_core_vif;
+
   // Configuration for DUT CSRs (held in a separate object for easy re-randomization)
   entropy_src_dut_cfg dut_cfg;
 

@@ -2038,6 +2038,13 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       return;
     end
 
+    if (register == ral.MODULE_ENABLE) begin
+      // On a write to the module_enable register, we want to collect coverage for the event.
+      if (txn.m_request.m_write && cfg.en_cov) begin
+        cov.on_module_enable_write(txn.m_request.m_wdata[3:0] == MuBi4True);
+      end
+    end
+
     `uvm_info("reg_access",
               $sformatf("Saw %0s register %0s",
                         txn.m_request.m_write ? "write to" : "read from",

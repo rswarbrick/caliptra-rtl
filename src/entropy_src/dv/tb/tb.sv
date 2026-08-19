@@ -146,6 +146,8 @@ module tb;
   bind caliptra_prim_sparse_fsm_flop : dut.u_entropy_src_core.u_entropy_src_main_sm.u_state_regs
     entropy_src_fsm_cov_if u_fsm_cov_if (.clk_i, .state_i, .state_o);
 
+  bind dut.u_entropy_src_core entropy_src_core_if u_core_if (.es_main_sm_state_i(es_main_sm_state));
+
   entropy_src_tb_assertion_if assertion_if ();
 
   initial begin
@@ -186,6 +188,8 @@ module tb;
                                                      entropy_src_path_if);
     uvm_config_db#(virtual entropy_src_assertion_if)::set(null, "*.env", "assertion_vif",
                                                           assertion_if.u_assertion_if);
+    uvm_config_db#(virtual entropy_src_core_if)::set(null, "*.env", "core_vif",
+                                                     dut.u_entropy_src_core.u_core_if);
 
     uvm_config_db#(virtual push_pull_if#(.HostDataWidth(entropy_src_pkg::RNG_BUS_WIDTH)))::
         set(null, "*.env.m_rng_agent*", "vif", rng_if);
