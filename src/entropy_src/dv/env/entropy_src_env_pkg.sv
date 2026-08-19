@@ -17,6 +17,7 @@ package entropy_src_env_pkg;
 
   import dv_base_reg_pkg::BkdrRegPathRtl;
   import dv_base_reg_pkg::dv_base_reg;
+  import dv_base_reg_pkg::dv_base_reg_field;
 
   import dv_base_mubi_pkg::get_rand_mubi4_val;
 
@@ -372,6 +373,8 @@ package entropy_src_env_pkg;
 
   // An import that will be used for AHB transaction items (generated at the end of a transaction)
   `uvm_analysis_imp_decl(_ahb_txn)
+
+  `include "threshold_field_cbs.svh"
 
   // package sources
   `include "entropy_src_dut_cfg.sv"
