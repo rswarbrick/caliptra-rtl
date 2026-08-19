@@ -13,6 +13,7 @@ package entropy_src_env_pkg;
   import prim_mubi_pkg::*;
   import entropy_subsys_fifo_exception_pkg::*;
   import entropy_src_main_sm_pkg::*;
+  import entropy_src_cov_pkg::*;
 
   import dv_base_reg_pkg::BkdrRegPathRtl;
   import dv_base_reg_pkg::dv_base_reg;
@@ -53,22 +54,6 @@ package entropy_src_env_pkg;
   } entropy_src_intr_e;
 
   typedef enum int {
-    invalid_fips_enable             = 0,
-    invalid_entropy_data_reg_enable = 1,
-    invalid_module_enable           = 2,
-    invalid_threshold_scope         = 3,
-    invalid_rng_bit_enable          = 4,
-    invalid_fw_ov_mode              = 5,
-    invalid_fw_ov_entropy_insert    = 6,
-    invalid_fw_ov_insert_start      = 7,
-    invalid_es_route                = 8,
-    invalid_es_type                 = 9,
-    invalid_alert_threshold         = 10,
-    invalid_fips_flag               = 11,
-    invalid_rng_fips                = 12
-  } invalid_mubi_e;
-
-  typedef enum int {
     sfifo_esrng_err        = 0,
     sfifo_distr_err        = 1,
     sfifo_observe_err      = 2,
@@ -101,23 +86,6 @@ package entropy_src_env_pkg;
   } fatal_err_e;
 
   typedef enum int {
-    window_cntr     = 0,
-    repcnt_ht_cntr  = 1,
-    repcnts_ht_cntr = 2,
-    adaptp_ht_cntr  = 3,
-    bucket_ht_cntr  = 4,
-    markov_ht_cntr  = 5
-  } cntr_e;
-
-  typedef enum int {
-    repcnt_ht  = 0,
-    repcnts_ht = 1,
-    adaptp_ht  = 2,
-    bucket_ht  = 3,
-    markov_ht  = 4
-  } health_test_e;
-
-  typedef enum int {
     bypass  = 0,
     fips    = 1
   } health_test_mode_e;
@@ -128,24 +96,6 @@ package entropy_src_env_pkg;
     bucket_ht_fail = 2,
     markov_ht_fail = 3
   } ht_fail_e;
-
-  typedef enum int {
-    write = 0,
-    read  = 1,
-    state = 2
-  } which_fifo_err_e;
-
-  typedef enum int {
-    sfifo_esrng   = 0,
-    sfifo_distr   = 1,
-    sfifo_observe = 2,
-    sfifo_esfinal = 3
-  } which_fifo_e;
-
-  typedef enum int {
-    high_test = 0,
-    low_test  = 1
-  } which_ht_e;
 
   typedef enum bit [4:0] {
     sfifo_esrng_err_code   = 0,

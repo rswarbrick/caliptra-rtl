@@ -9,9 +9,9 @@ filesets:
   files_dv:
     depend:
       - lowrisc:dv:dv_utils
-      - lowrisc:dv:entropy_src_env
       - caliptra:compile_yml:entropy_src
     files:
+      - entropy_src_cov_pkg.sv
       - entropy_src_cov_if.sv
       - entropy_src_fsm_cov_if.sv
       - entropy_src_cov_bind.sv

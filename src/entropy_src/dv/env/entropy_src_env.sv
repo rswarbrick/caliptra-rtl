@@ -153,6 +153,16 @@ class entropy_src_env extends dv_base_env #(
          cfg.entropy_src_path_vif)) begin
       `uvm_fatal(`gfn, "failed to get entropy_src_path_vif from uvm_config_db")
     end
+
+    if (cfg.en_cov) begin
+      virtual entropy_src_cov_if cov_vif;
+      if (!uvm_config_db#(virtual entropy_src_cov_if)::get
+          (null, "*.env" , "entropy_src_cov_if", cov_vif)) begin
+        `uvm_fatal(`gfn, $sformatf("Failed to get entropy_src_cov_if from uvm_config_db"))
+      end
+
+      cov.set_cov_vif(cov_vif);
+    end
   endfunction
 
   function void connect_phase(uvm_phase phase);

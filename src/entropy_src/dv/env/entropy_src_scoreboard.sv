@@ -26,8 +26,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   localparam int SHACondWidth     = 64;
   localparam int ObserveFifoDepth = entropy_src_reg_pkg::ObserveFifoDepth;
 
-  virtual entropy_src_cov_if cov_vif;
-
   // used by health_test_scoring_thread to predict the FSMs phase
   // when constructing seeds
   int seed_idx             = 0;
@@ -210,11 +208,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
     rng_fifo   = new("rng_fifo", this);
     csrng_fifo = new("csrng_fifo", this);
-
-    if (!uvm_config_db#(virtual entropy_src_cov_if)::get
-       (null, "*.env" , "entropy_src_cov_if", cov_vif)) begin
-       `uvm_fatal(`gfn, $sformatf("Failed to get entropy_src_cov_if from uvm_config_db"))
-    end
   endfunction
 
   function void connect_phase(uvm_phase phase);
@@ -652,14 +645,16 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
 
     if (ht_is_active()) begin
-      cov_vif.cg_win_ht_sample(adaptp_ht, high_test, window_size_scaled * RNG_BUS_WIDTH, fail_hi);
-      cov_vif.cg_win_ht_sample(adaptp_ht, low_test, window_size_scaled * RNG_BUS_WIDTH, fail_lo);
-      cov_vif.cg_win_ht_deep_threshold_sample(adaptp_ht, high_test,
-                                              window_size_scaled * RNG_BUS_WIDTH,
-                                              !total_scope, sigma_hi, fail_hi);
-      cov_vif.cg_win_ht_deep_threshold_sample(adaptp_ht, low_test,
-                                              window_size_scaled * RNG_BUS_WIDTH,
-                                              !total_scope, sigma_lo, fail_lo);
+      cov.get_vif().cg_win_ht_sample(adaptp_ht, high_test,
+                                     window_size_scaled * RNG_BUS_WIDTH, fail_hi);
+      cov.get_vif().cg_win_ht_sample(adaptp_ht, low_test,
+                                     window_size_scaled * RNG_BUS_WIDTH, fail_lo);
+      cov.get_vif().cg_win_ht_deep_threshold_sample(adaptp_ht, high_test,
+                                                    window_size_scaled * RNG_BUS_WIDTH,
+                                                    !total_scope, sigma_hi, fail_hi);
+      cov.get_vif().cg_win_ht_deep_threshold_sample(adaptp_ht, low_test,
+                                                    window_size_scaled * RNG_BUS_WIDTH,
+                                                    !total_scope, sigma_lo, fail_lo);
     end
 
     return (fail_hi || fail_lo);
@@ -692,10 +687,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     if (fail) predict_failure_logs("bucket");
 
     if (ht_is_active()) begin
-      cov_vif.cg_win_ht_sample(bucket_ht, high_test, window_size_scaled*RNG_BUS_WIDTH, fail);
-      cov_vif.cg_win_ht_deep_threshold_sample(bucket_ht, high_test,
-                                              window_size_scaled*RNG_BUS_WIDTH,
-                                              1'b0, sigma, fail);
+      cov.get_vif().cg_win_ht_sample(bucket_ht, high_test, window_size_scaled*RNG_BUS_WIDTH, fail);
+      cov.get_vif().cg_win_ht_deep_threshold_sample(bucket_ht, high_test,
+                                                    window_size_scaled*RNG_BUS_WIDTH,
+                                                    1'b0, sigma, fail);
     end
 
     return fail;
@@ -741,14 +736,16 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     if (fail_hi) predict_failure_logs("markov_hi");
 
     if (ht_is_active()) begin
-      cov_vif.cg_win_ht_sample(markov_ht, high_test, window_size_scaled*RNG_BUS_WIDTH, fail_hi);
-      cov_vif.cg_win_ht_sample(markov_ht, low_test, window_size_scaled*RNG_BUS_WIDTH, fail_lo);
-      cov_vif.cg_win_ht_deep_threshold_sample(markov_ht, high_test,
-                                              window_size_scaled*RNG_BUS_WIDTH,
-                                              !total_scope, sigma_hi, fail_hi);
-      cov_vif.cg_win_ht_deep_threshold_sample(markov_ht, low_test,
-                                              window_size_scaled*RNG_BUS_WIDTH,
-                                              !total_scope, sigma_hi, fail_lo);
+      cov.get_vif().cg_win_ht_sample(markov_ht, high_test,
+                                     window_size_scaled*RNG_BUS_WIDTH, fail_hi);
+      cov.get_vif().cg_win_ht_sample(markov_ht, low_test,
+                                     window_size_scaled*RNG_BUS_WIDTH, fail_lo);
+      cov.get_vif().cg_win_ht_deep_threshold_sample(markov_ht, high_test,
+                                                    window_size_scaled*RNG_BUS_WIDTH,
+                                                    !total_scope, sigma_hi, fail_hi);
+      cov.get_vif().cg_win_ht_deep_threshold_sample(markov_ht, low_test,
+                                                    window_size_scaled*RNG_BUS_WIDTH,
+                                                    !total_scope, sigma_hi, fail_lo);
     end
 
     return (fail_hi || fail_lo);
@@ -768,8 +765,8 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
 
     if (ht_is_active()) begin
-      cov_vif.cg_cont_ht_sample(repcnt_ht, fips_mode, rng_en, `gmv(ral.CONF.RNG_BIT_SEL),
-                                value, fail);
+      cov.get_vif().cg_cont_ht_sample(repcnt_ht, fips_mode, rng_en, `gmv(ral.CONF.RNG_BIT_SEL),
+                                      value, fail);
     end
 
     return fail;
@@ -789,8 +786,8 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
 
     if (ht_is_active()) begin
-      cov_vif.cg_cont_ht_sample(repcnts_ht, fips_mode, rng_en, `gmv(ral.CONF.RNG_BIT_SEL),
-                                value, fail);
+      cov.get_vif().cg_cont_ht_sample(repcnts_ht, fips_mode, rng_en, `gmv(ral.CONF.RNG_BIT_SEL),
+                                      value, fail);
     end
 
     return fail;
@@ -889,7 +886,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
           // The DUT should either set the alert, or crash the sim.
           // If we succeed, sample this alert_threshold as covered successfully.
-          cov_vif.cg_alert_cnt_sample(alert_threshold, 1);
+          cov.get_vif().cg_alert_cnt_sample(alert_threshold, 1);
         end else if (main_sm_escalates) begin
           fmt = "Main SM in error state, overrides recov alert (Fail cnt: %01d,  thresh: %01d)";
         end else if(threshold_alert_active) begin
@@ -1203,7 +1200,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
                                     (new_thresh < prev_thresh ? new_thresh : prev_thresh);
       update_rejected = (thresh_out != new_thresh);
       result[i +: ThreshW] = thresh_out;
-      cov_vif.cg_one_way_ht_threshold_reg_sample(offset, update_rejected, is_fips_thresh);
+      cov.get_vif().cg_one_way_ht_threshold_reg_sample(offset, update_rejected, is_fips_thresh);
     end
     fmt = "Threshold Reg Update. Offset: %08x (%s), Orig: %08x, New: %08x, Final: %08x";
     msg = $sformatf(fmt, offset, prev_val, increase_only ? "INCREASES" : "DECREASES",
@@ -1250,7 +1247,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       uvm_reg_field sts_field = ral.RECOV_ALERT_STS.get_field_by_name(sts_field_name);
       `DV_CHECK_FATAL(sts_field.predict(.value(1'b1), .kind(UVM_PREDICT_READ)))
 
-      cov_vif.cg_mubi_err_sample(which_mubi);
+      cov.get_vif().cg_mubi_err_sample(which_mubi);
     end
   endfunction
 

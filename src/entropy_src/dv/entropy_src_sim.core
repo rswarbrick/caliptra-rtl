@@ -12,7 +12,6 @@ filesets:
   files_dv:
     depend:
       - lowrisc:dv:entropy_src_test
-      - lowrisc:dv:entropy_src_cov
       - lowrisc:dv:digestpp_dpi:0.1
     files:
       - tb/tb.sv

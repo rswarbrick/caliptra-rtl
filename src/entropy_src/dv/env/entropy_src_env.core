@@ -15,6 +15,7 @@ filesets:
       - lowrisc:dv:ahb_agent
       - lowrisc:dv:push_pull_agent
       - lowrisc:dv:entropy_subsys_fifo_exception_if
+      - lowrisc:dv:entropy_src_cov
     files:
       - entropy_src_env_pkg.sv
       - entropy_src_path_if.sv
