@@ -1995,9 +1995,49 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
   endfunction
 
+  // Return true if the register is currently locked by a write-enable
+  function bit is_reg_locked(uvm_reg register);
+    // Is register locked by REGWEN?
+    if (!ral.REGWEN.REGWEN.get_mirrored_value()) begin
+      if (register inside {ral.CONF,
+                           ral.ENTROPY_CONTROL,
+                           ral.HEALTH_TEST_WINDOWS,
+                           ral.REPCNT_THRESHOLDS,
+                           ral.REPCNTS_THRESHOLDS,
+                           ral.ADAPTP_HI_THRESHOLDS,
+                           ral.ADAPTP_LO_THRESHOLDS,
+                           ral.BUCKET_THRESHOLDS,
+                           ral.MARKOV_HI_THRESHOLDS,
+                           ral.MARKOV_LO_THRESHOLDS,
+                           ral.ALERT_THRESHOLD,
+                           ral.FW_OV_CONTROL,
+                           ral.OBSERVE_FIFO_THRESH})
+        return 1;
+    end
+
+    // Is register locked by ME_REGWEN?
+    if (!ral.ME_REGWEN.ME_REGWEN.get_mirrored_value()) begin
+      if (register == ral.MODULE_ENABLE) return 1;
+    end
+
+    // No write-enable locked the register
+    return 0;
+  endfunction
+
   // Called with a complete, successful monitored bus transaction item and the register that it
   // addressed.
   function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
+
+    // If this is a write to a locked register, it should have no effect. Tell the coverage
+    // collector (which will be interested if the write is trying to change the value) and then
+    // leave.
+    if (txn.m_request.m_write && is_reg_locked(register)) begin
+      if (cfg.en_cov) begin
+        cov.on_write_to_locked_register(txn, register);
+      end
+      return;
+    end
+
     `uvm_info("reg_access",
               $sformatf("Saw %0s register %0s",
                         txn.m_request.m_write ? "write to" : "read from",
