@@ -11,22 +11,29 @@
 class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg));
   `uvm_component_utils(entropy_src_env_cov)
 
-  // the base class provides the following handles for use:
-  // entropy_src_env_cfg: cfg
+  // A handle to the coverage collecting interface, which contains covergroups stimulated by this
+  // coverage collector. Set this by calling set_cov_vif() before this module's build_phase.
+  local virtual entropy_src_cov_if m_cov_vif;
 
-  // covergroups
-  // [add covergroups here]
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
-    // [instantiate covergroups here]
   endfunction : new
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    // [or instantiate covergroups here]
-    // Please instantiate sticky_intr_cov array of objects for all interrupts that are sticky
-    // See cip_base_env_cov for details
+
+    if (m_cov_vif == null) `uvm_fatal(get_full_name(), "Coverage interface has not been set.")
+  endfunction
+
+  // Set m_cov_vif. This must be called before build_phase.
+  function void set_cov_vif(virtual entropy_src_cov_if cov_vif);
+    m_cov_vif = cov_vif;
+  endfunction
+
+  // Return a handle to the entropy_src_cov_if in m_cov_vif.
+  function virtual entropy_src_cov_if get_vif();
+    return m_cov_vif;
   endfunction
 
 endclass

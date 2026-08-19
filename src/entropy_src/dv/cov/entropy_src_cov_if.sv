@@ -15,7 +15,7 @@ interface entropy_src_cov_if
   import uvm_pkg::*;
   import dv_utils_pkg::*;
   import entropy_src_reg_pkg::*;
-  import entropy_src_env_pkg::*;
+  import entropy_src_cov_pkg::*;
   import entropy_src_pkg::*;
   `include "dv_fcov_macros.svh"
 
