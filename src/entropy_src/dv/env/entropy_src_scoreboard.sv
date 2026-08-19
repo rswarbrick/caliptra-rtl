@@ -143,9 +143,14 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // Interrupts should go low when an interrupt is cleared
   bit [NumEntropySrcIntr - 1:0] known_intr_state = '0;
 
-  bit [NumEntropySrcIntr - 1:0] intr_en_mask = '0;
+  // A bit mask of interrupts that were requested by the last write to INTERRUPT_TEST. This gets
+  // cleared (like known_intr_state) when a write is seen to INTERRUPT_STATE.
   bit [NumEntropySrcIntr - 1:0] intr_test = '0;
-  bit                           intr_test_active = '0;
+
+  // A flag that tracks whether INTERRUPT_TEST is being used. This gets set on a write to
+  // INTERRUPT_TEST and causes coverage collection after INTERRUPT_STATE reads to use an
+  // intr_test-specific covergroup.
+  bit                           intr_test_active = 0;
 
   // Indicates that the observe fifo should have data in it.
   // Switches to OBSERVE_FIFO_THRESHOLD when:
@@ -1119,7 +1124,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
     // Clear interrupt state
     known_intr_state                         = 0;
-    intr_en_mask                             = 0;
 
     expected_obsfifo_entries_since_last_intr = 0;
 
@@ -2027,6 +2031,16 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // Called with a complete, successful monitored bus transaction item and the register that it
   // addressed.
   function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
+    // If this flag is true, this is a read transaction and we have a prediction for the value that
+    // was read. There will be a check at the end of the function that makes sure the prediction
+    // matches the rdata.
+    bit check_rdata = !txn.m_request.m_write;
+
+    `uvm_info("reg_access",
+              $sformatf("Saw %0s register %0s",
+                        txn.m_request.m_write ? "write to" : "read from",
+                        register.get_name()),
+              UVM_LOW)
 
     // If this is a write to a locked register, it should have no effect. Tell the coverage
     // collector (which will be interested if the write is trying to change the value) and then
@@ -2043,12 +2057,32 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       if (txn.m_request.m_write && cfg.en_cov) begin
         cov.on_module_enable_write(txn.m_request.m_wdata[3:0] == MuBi4True);
       end
+    end else if (register == ral.INTERRUPT_STATE) begin
+      // The register model might not have a good value for INTERRUPT_STATE, because the register
+      // can be updated asynchronously.
+      check_rdata = 0;
+
+      if (txn.m_request.m_write) begin
+        // The mirrored value will be updated a uvm_reg_predictor, but the scoreboard has a separate
+        // track of the register value (because it can depend on non-register events). Update that
+        // here.
+        clear_interrupts(txn.m_request.m_wdata[NumEntropySrcIntr-1:0]);
+      end
+    end else if (register == ral.INTERRUPT_TEST) begin
+      if (txn.m_request.m_write) begin
+        intr_test        = txn.m_request.m_wdata[NumEntropySrcIntr-1:0];
+        intr_test_active = 1;
+      end
     end
 
-    `uvm_info("reg_access",
-              $sformatf("Saw %0s register %0s",
-                        txn.m_request.m_write ? "write to" : "read from",
-                        register.get_name()),
-              UVM_LOW)
+    if (check_rdata) begin
+      if (txn.m_request.m_resp.m_rdata != register.get_mirrored_value()) begin
+        `uvm_error("rdata_mismatch",
+                   $sformatf("Read from register %0s saw 0x%0h, but mirrored value was 0x%0h.",
+                             register.get_name(),
+                             txn.m_request.m_resp.m_rdata,
+                             register.get_mirrored_value()))
+      end
+    end
   endfunction
 endclass
