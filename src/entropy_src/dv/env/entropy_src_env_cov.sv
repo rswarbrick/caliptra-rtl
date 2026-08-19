@@ -36,4 +36,23 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
     return m_cov_vif;
   endfunction
 
+  // Return true if the mirrored MODULE_ENABLE register is MuBi4True.
+  local function bit is_module_enabled();
+    return cfg.ral.MODULE_ENABLE.MODULE_ENABLE.get_mirrored_value() == MuBi4True;
+  endfunction
+
+  // A transaction has just tried to write a register that is locked by REGWEN being false.
+  function void on_write_to_locked_register(ahb_txn_item txn, uvm_reg register);
+    `uvm_info(get_full_name(),
+              $sformatf("Attempt to write %0s while locked.", register.get_name()),
+              UVM_FULL)
+
+    // Cover sw_update_sample if this if the new data represents an attempted change from the
+    // previous value (one that can be confirmed by a follow-up read).
+    if (txn.m_request.m_wdata != register.get_mirrored_value()) begin
+      m_cov_vif.cg_sw_update_sample(register.get_offset(),
+                                    cfg.ral.SW_REGUPD.SW_REGUPD.get_mirrored_value(),
+                                    is_module_enabled());
+    end
+  endfunction
 endclass
