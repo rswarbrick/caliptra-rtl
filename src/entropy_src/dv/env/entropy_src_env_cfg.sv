@@ -47,6 +47,9 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
   // (Coverage completion requires earlier notice of following state).
   virtual entropy_src_fsm_cov_if fsm_tracking_vif;
 
+  // A callback that's used for predicting updates to the various threshold fields
+  threshold_field_cbs m_threshold_field_cbs;
+
   // The subordinate index of entropy_src on the AHB bus. This is used to constrain HSEL when
   // sending AHB sequence items.
   //
@@ -277,6 +280,18 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
     // The byte-enable width should be zero: there is no wstrb value on the interface.
     initialize_ral(m_ahb_vif.addr_width, m_ahb_vif.data_width, 0);
 
+    m_threshold_field_cbs = threshold_field_cbs::type_id::create("m_threshold_field_cbs");
+
+    configure_reg_threshold_direction(ral.REPCNT_THRESHOLDS,    1'b1);
+    configure_reg_threshold_direction(ral.REPCNTS_THRESHOLDS,   1'b1);
+    configure_reg_threshold_direction(ral.ADAPTP_HI_THRESHOLDS, 1'b1);
+    configure_reg_threshold_direction(ral.ADAPTP_LO_THRESHOLDS, 1'b0);
+    configure_reg_threshold_direction(ral.BUCKET_THRESHOLDS,    1'b1);
+    configure_reg_threshold_direction(ral.MARKOV_HI_THRESHOLDS, 1'b1);
+    configure_reg_threshold_direction(ral.MARKOV_LO_THRESHOLDS, 1'b0);
+    configure_reg_threshold_direction(ral.EXTHT_HI_THRESHOLDS,  1'b1);
+    configure_reg_threshold_direction(ral.EXTHT_LO_THRESHOLDS,  1'b0);
+
     ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_entropy_valid.q",
                                        0, 1, BkdrRegPathRtl);
     ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_health_test_failed.q",
@@ -487,6 +502,25 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
                             type_id::create("m_csrng_agent_cfg");
     m_aes_halt_agent_cfg  = push_pull_agent_cfg#(.HostDataWidth(0))::
                             type_id::create("m_aes_halt_agent_cfg");
+  endfunction
+
+  // Configure the FIPS_THRESH and BYPASS_THRESH fields of register to have upper or lower bound
+  // prediction callbacks.
+  function void configure_reg_threshold_direction(uvm_reg register, bit is_upper_bound);
+    string field_names[] = '{"FIPS_THRESH", "BYPASS_THRESH"};
+    foreach (field_names[i]) begin
+      uvm_reg_field   fld = register.get_field_by_name(field_names[i]);
+
+      if (fld == null) begin
+        `uvm_fatal("no_such_field", $sformatf("Cannot find threshold field: %0s.", field_names[i]))
+      end
+
+      // Teach the callbacks which direction this field gets updated
+      m_threshold_field_cbs.add_field(fld, is_upper_bound);
+
+      // Tell the field to call the callbacks in m_threshold_field_cbs on changes
+      uvm_reg_field_cb::add(fld, m_threshold_field_cbs);
+    end
   endfunction
 
   // Add path slices for the two 16-bit fields in a thresholds register
