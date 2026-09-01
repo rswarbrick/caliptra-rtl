@@ -82,4 +82,54 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
     m_cov_vif.cg_sw_disable_sample(me_regwen, requested_enable, main_sm_state);
   endfunction
 
+  // There has just been a read from FW_OV_RD_DATA (reading from the observe fifo)
+  //
+  //  fips_enable:             The mirrored value for CONF.FIPS_ENABLE.
+  //  fips_flag:               The mirrored value for CONF.FIPS_FLAG.
+  //  rng_fips:                The mirrored value for CONF.RNG_FIPS.
+  //  threshold_scope:         The mirrored value for CONF.THRESHOLD_SCOPE.
+  //  rng_bit_enable:          The mirrored value for CONF.RNG_BIT_ENABLE.
+  //  rng_bit_sel:             The mirrored value for CONF.RNG_BIT_SEL.
+  //  es_route:                The mirrored value for ENTROPY_CONTROL.ES_ROUTE.
+  //  es_type:                 The mirrored value for ENTROPY_CONTROL.ES_TYPE.
+  //  entropy_data_reg_enable: The mirrored value for CONF.ENTROPY_DATA_REG_ENABLE.
+  //  otp_en_es_fw_read:       The value that is being driven to otp_en_entropy_src_fw_read_i
+  //  fw_ov_mode:              The mirrored value for FW_OV_CONTROL.FW_OV_MODE.
+  //  otp_en_es_fw_over:       The value that is being driven to otp_en_entropy_src_fw_over_i
+  //  fw_ov_entropy_insert:    The mirrored value for FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.
+  function void on_observe_fifo_event(bit [3:0] fips_enable,
+                                      bit [3:0] fips_flag,
+                                      bit [3:0] rng_fips,
+                                      bit [3:0] threshold_scope,
+                                      bit [3:0] rng_bit_enable,
+                                      bit       rng_bit_sel,
+                                      bit [3:0] es_route,
+                                      bit [3:0] es_type,
+                                      bit [3:0] entropy_data_reg_enable,
+                                      bit [7:0] otp_en_es_fw_read,
+                                      bit [3:0] fw_ov_mode,
+                                      bit [7:0] otp_en_es_fw_over,
+                                      bit [3:0] fw_ov_entropy_insert);
+    m_cov_vif.cg_observe_fifo_event_sample(mubi4_t'(fips_enable),
+                                           mubi4_t'(fips_flag),
+                                           mubi4_t'(rng_fips),
+                                           mubi4_t'(threshold_scope),
+                                           mubi4_t'(rng_bit_enable),
+                                           rng_bit_sel,
+                                           mubi4_t'(es_route),
+                                           mubi4_t'(es_type),
+                                           mubi4_t'(entropy_data_reg_enable),
+                                           mubi8_t'(otp_en_es_fw_read),
+                                           mubi4_t'(fw_ov_mode),
+                                           mubi8_t'(otp_en_es_fw_over),
+                                           mubi4_t'(fw_ov_entropy_insert));
+  endfunction
+
+  // There has just been a read from the observe FIFO. This is the n'th such read since the last
+  // interrupt, where n is the last configured value of OBSERVE_FIFO_THRESH.OBSERVE_FIFO_THRESH.
+  //
+  //  observe_fifo_thresh: The currently mirrored value of that field.
+  function void on_read_expected_fifo_entries_since_interrupt(bit [6:0] observe_fifo_thresh);
+    m_cov_vif.cg_observe_fifo_threshold_sample(observe_fifo_thresh);
+  endfunction
 endclass

@@ -371,6 +371,9 @@ package entropy_src_env_pkg;
 
   endfunction
 
+  // An import that will be used for AHB request items
+  `uvm_analysis_imp_decl(_ahb_req)
+
   // An import that will be used for AHB transaction items (generated at the end of a transaction)
   `uvm_analysis_imp_decl(_ahb_txn)
 
