@@ -10,6 +10,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
   `uvm_component_utils(entropy_src_scoreboard)
 
+  // An import for AHB request items (reporting the address phase of an AHB transaction). Unless
+  // there is a reset, the full transaction will follow one or more cycles later in m_ahb_txn_imp.
+  uvm_analysis_imp_ahb_req #(ahb_txn_request_item, entropy_src_scoreboard) m_ahb_req_imp;
+
   // An import for AHB transactions.
   uvm_analysis_imp_ahb_txn #(ahb_txn_item, entropy_src_scoreboard) m_ahb_txn_imp;
 
@@ -36,10 +40,9 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   int entropy_data_drops    = 0;
   int csrng_seeds           = 0;
   int csrng_drops           = 0;
+
+  // The number of words that have been read from the observe fifo
   int observe_fifo_words    = 0;
-  int observe_fifo_drops    = 0;
-  bit observe_fifo_overflow = 0;
-  int overflow_read_cnt     = 0;
 
   bit dut_pipeline_enabled = 0;
   bit regwen_pending = 0;
@@ -62,11 +65,33 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // Queue of seeds for predicting reads to entropy_data CSR
   bit [CSRNG_BUS_WIDTH - 1:0]      entropy_data_q[$];
 
-  // Queue of 32-bit words for predicting outputs of the observe FIFO
   bit [31:0]                repacked_entropy_release_q[$];
+
+  // Queue of 32-bit words for predicting outputs of the observe FIFO.
+  //
+  // These words come into the dut from the RNG, and are seen as items in rng_fifo. Those items get
+  // packed into rng_val_t vectors by wait_rng_queue and then collected into 32-bit words by
+  // collect_entropy. Those words are pushed onto the back of this queue.
+  //
+  // On a read from the observe FIFO, the process_observe_fifo_csr_access function will pop from the
+  // front of this queue to predict the expected result.
   bit [31:0]                observe_fifo_q[$];
+
+  // A bit that shows the observe fifo has overflowed
   bit                       overflow_condition = 0;
-  bit                       observe_read_incoming = 0;
+
+  // A count of transactions that are currently reading from the observe fifo.
+  //
+  // This is incremented when the monitor reports an address phase of a transaction reading from
+  // FW_OV_RD_DATA. At that point, the hardware actually pulls the value from the fifo at this
+  // point, possibly freeing up space for more information to be added. It gets decremented again
+  // when the data phase of the transaction completes.
+  //
+  // Note that this value will normally be 0 or 1. It's represented as an integer to avoid reasoning
+  // about back-to-back repeated reads. The address phase of the second races with the data phase of
+  // the first and we don't want to care what order they arrive.
+  int unsigned              observe_fifo_reads_in_flight = 0;
+
   bit [31:0]                fw_ov_wr_fifo_full_prediction = '0;
   bit                       precon_fifo_full = 0;
   bit                       precon_fifo_full_q = 0;
@@ -205,6 +230,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_ahb_req_imp = new("m_ahb_req_imp", this);
     m_ahb_txn_imp = new("m_ahb_txn_imp", this);
   endfunction
 
@@ -255,10 +281,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
     fmt = "Words read from observe fifo:               %0d";
     msg = $sformatf(fmt, observe_fifo_words);
-    `uvm_info(`gfn, msg, UVM_LOW)
-
-    fmt = "Words assumed dropped from observe fifo:    %0d";
-    msg = $sformatf(fmt, observe_fifo_drops);
     `uvm_info(`gfn, msg, UVM_LOW)
   endfunction
 
@@ -1089,10 +1111,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     if ((rst_type == FIFOClr) || (rst_type == Enable)) begin
       observe_fifo_q.delete();
       entropy_data_q.delete();
-      // The overflow condition for the observe FIFO is cleared whenever the observe FIFO
-      // gets cleared.
-      observe_fifo_overflow = 0;
-      overflow_read_cnt = 0;
       // Clear variables used for observe FIFO depth prediction.
       observe_push_busy_addr_phase = 0;
       observe_push_busy = 0;
@@ -1133,6 +1151,11 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     rng_fifo.flush();
     // Note the CSRNG TLM analysis fifo should NOT be flushed, as it contains actual DUT
     // outputs which must be scoreboarded
+
+    // On a reset of the block, any incomplete read from FW_OV_RD_DATA is aborted.
+    if (rst_type == HardReset) begin
+      observe_fifo_reads_in_flight = 0;
+    end
 
     `uvm_info(`gfn, $sformatf("%s Detected", rst_type.name), UVM_MEDIUM)
   endfunction
@@ -1533,7 +1556,8 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
               // fw_ov_rd_fifo_overflow register to be set to true. We drop the overflowing data by
               // not pushing into the observe FIFO queue.
               if (overflow_condition ||
-                  (observe_fifo_q.size() >= (OBSERVE_FIFO_DEPTH + observe_read_incoming))) begin
+                  (observe_fifo_q.size() >=
+                   (OBSERVE_FIFO_DEPTH + observe_fifo_reads_in_flight))) begin
                 overflow_condition = 1;
                 `DV_CHECK_FATAL(ral.FW_OV_RD_FIFO_OVERFLOW.FW_OV_RD_FIFO_OVERFLOW.predict('b1))
 
@@ -1808,6 +1832,60 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
   endtask
 
+  function void process_observe_fifo_csr_access(bit [31:0] rdata);
+    string msg, fmt;
+    bit fw_ov_enabled = (cfg.otp_en_es_fw_over == MuBi8True) &&
+                        (ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value() == MuBi4True);
+    bit drops_allowed;
+
+    fmt = "Predicting observe FIFO access, Looking for: %08x";
+    msg = $sformatf(fmt, rdata);
+    `uvm_info(`gfn, msg, UVM_FULL)
+
+    // Put the following code inside of a fork to avoid consuming time.
+    fork
+      if (!fw_ov_enabled) begin
+        // if fw_ov mode has never been enabled (and the programming model has been correctly
+        // applied) then the observe fifo should be empty and cleared.
+        msg = "Observe FIFO is disabled";
+        `uvm_info(`gfn, msg, UVM_FULL)
+      end else begin
+        bit [31:0] prediction;
+
+        // Pop the observe FIFO queue and compare the prediction to the actual value.
+        prediction = observe_fifo_q.pop_front();
+        fmt = "Predicting observe FIFO access, Comparing to: %08x Actual value: %08x";
+        msg = $sformatf(fmt, prediction, rdata);
+        `uvm_info(`gfn, msg, UVM_FULL)
+
+        if (prediction != rdata) begin
+          `uvm_error(get_full_name(),
+                     $sformatf({"Mismatch with predicted value for observe FIFO access. ",
+                                "The prediction was 0x%0h but the observed value was 0x%0h."},
+                               prediction, rdata))
+        end
+
+        observe_fifo_words++;
+        cov.on_observe_fifo_event(ral.CONF.FIPS_ENABLE.get_mirrored_value(),
+                                  ral.CONF.FIPS_FLAG.get_mirrored_value(),
+                                  ral.CONF.RNG_FIPS.get_mirrored_value(),
+                                  ral.CONF.THRESHOLD_SCOPE.get_mirrored_value(),
+                                  ral.CONF.RNG_BIT_ENABLE.get_mirrored_value(),
+                                  ral.CONF.RNG_BIT_SEL.get_mirrored_value(),
+                                  ral.ENTROPY_CONTROL.ES_ROUTE.get_mirrored_value(),
+                                  ral.ENTROPY_CONTROL.ES_TYPE.get_mirrored_value(),
+                                  ral.CONF.ENTROPY_DATA_REG_ENABLE.get_mirrored_value(),
+                                  cfg.otp_en_es_fw_read,
+                                  ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value(),
+                                  cfg.otp_en_es_fw_over,
+                                  ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.get_mirrored_value());
+
+        msg = $sformatf("Match found: %d\n", observe_fifo_words);
+        `uvm_info(`gfn, msg, UVM_FULL)
+      end
+    join_none
+  endfunction
+
   virtual task predict_fw_ov_wr_full();
     bit [StateWidthPad-1:0] sha3pad_state, sha3pad_state_next;
     bit cs_aes_halt_o;
@@ -1969,6 +2047,18 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     return dv_register;
   endfunction
 
+  // The write function for m_ahb_req_imp, which is called for every AHB request reported by the
+  // monitor in the AHB agent.
+  function void write_ahb_req(ahb_txn_request_item req);
+    uvm_reg register = register_for_txn_request(req);
+
+    // On the address phase of a read from FW_OV_RD_DATA, increment observe_fifo_reads_in_flight.
+    // This will be decremented again when the data phase for the transaction completes.
+    if (register == ral.FW_OV_RD_DATA && !req.m_write) begin
+      observe_fifo_reads_in_flight++;
+    end
+  endfunction
+
   // The write function for m_ahb_txn_imp, which is called for every bus transaction reported by the
   // monitor in the AHB agent.
   function void write_ahb_txn(ahb_txn_item bus_txn);
@@ -2036,6 +2126,11 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     // matches the rdata.
     bit check_rdata = !txn.m_request.m_write;
 
+    // The value against which rdata will be compared if check_rdata is true. If we have a different
+    // prediction about the value the register should contain, we set the value here (and let the
+    // standard uvm_reg_predictor update the register model's prediction later).
+    uvm_reg_data_t exp_rdata = register.get_mirrored_value();
+
     `uvm_info("reg_access",
               $sformatf("Saw %0s register %0s",
                         txn.m_request.m_write ? "write to" : "read from",
@@ -2073,15 +2168,72 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         intr_test        = txn.m_request.m_wdata[NumEntropySrcIntr-1:0];
         intr_test_active = 1;
       end
+    end else if (register == ral.FW_OV_RD_DATA) begin
+      if (!txn.m_request.m_write) begin
+        // This is a read from the observe FIFO queue.
+
+        uvm_reg_data_t observe_fifo_depth;
+
+        // We have already incremented observe_fifo_reads_in_flight (so it had better be nonzero).
+        // Decrement it again here.
+        if (!observe_fifo_reads_in_flight) begin
+          `uvm_fatal(get_full_name(),
+                     "Data phase for read of FW_OV_RD_DATA but observe_fifo_reads_in_flight=0.")
+        end
+        observe_fifo_reads_in_flight--;
+
+        // Reading from a nonempty fifo will pop something, decreasing OBSERVE_FIFO_DEPTH.
+        observe_fifo_depth = ral.OBSERVE_FIFO_DEPTH.get_mirrored_value();
+        if (observe_fifo_depth) begin
+          observe_fifo_depth--;
+          if (!ral.OBSERVE_FIFO_DEPTH.predict(observe_fifo_depth, UVM_PREDICT_DIRECT)) begin
+            `uvm_fatal(get_full_name(), "Failed to predict OBSERVE_FIFO_DEPTH.")
+          end
+        end
+
+        // If there is an overflow condition, it ends when the last word is popped from the FIFO
+        // (which happens when decreases to zero). Clear the condition in that situation.
+        if (overflow_condition && !observe_fifo_depth) begin
+          overflow_condition = 0;
+          if (!ral.FW_OV_RD_FIFO_OVERFLOW.predict(0, UVM_PREDICT_DIRECT)) begin
+            `uvm_fatal(get_full_name(), "Failed to predict FW_OV_RD_FIFO_OVERFLOW.")
+          end
+        end
+
+        if (fifos_cleared) begin
+          exp_rdata = 0;
+        end else begin
+          // Update our FIFO model and check that we expected this entropy value. Set check_rdata to
+          // zero the check in that function is more informative than the one we'll get at the end
+          // of this one.
+          //
+          // Slice the bottom 32 bits from the item, matching the width of AHB on caliptra-rtl and
+          // also the TLUL responder inside entropy_src.
+          process_observe_fifo_csr_access(txn.m_response.m_rdata[31:0]);
+          check_rdata = 0;
+
+          // Decrement expected_obsfifo_entries_since_last_intr. When it touches zero, we have seen
+          // the expected number of reads from the FIFO since the last interrupt. Allow this
+          // (signed) number to become negative: that just means we've seen some more reads from the
+          // FIFO.
+          expected_obsfifo_entries_since_last_intr--;
+          if (expected_obsfifo_entries_since_last_intr == 0) begin
+            // We have successfully read OBSERVE_FIFO_THRESH entries from the fifo since an
+            // interrupt. Mark this value of OBSERVE_FIFO_THRESH as successful
+            bit [6:0] val = ral.OBSERVE_FIFO_THRESH.OBSERVE_FIFO_THRESH.get_mirrored_value();
+            cov.on_read_expected_fifo_entries_since_interrupt(val);
+          end
+        end
+      end
     end
 
     if (check_rdata) begin
-      if (txn.m_request.m_resp.m_rdata != register.get_mirrored_value()) begin
+      if (txn.m_response.m_rdata != exp_rdata) begin
         `uvm_error("rdata_mismatch",
-                   $sformatf("Read from register %0s saw 0x%0h, but mirrored value was 0x%0h.",
+                   $sformatf("Read from register %0s saw 0x%0h, but predicted value was 0x%0h.",
                              register.get_name(),
-                             txn.m_request.m_resp.m_rdata,
-                             register.get_mirrored_value()))
+                             txn.m_response.m_rdata,
+                             exp_rdata))
       end
     end
   endfunction

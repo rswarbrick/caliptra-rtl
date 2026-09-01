@@ -195,6 +195,8 @@ class entropy_src_env extends dv_base_env #(
       m_ahb_mgr_agent.register_subordinate_for_map(maps[i], cfg.m_subordinate_idx);
     end
 
+    m_ahb_mgr_agent.m_request_port.connect(scoreboard.m_ahb_req_imp);
+
     m_ahb_mgr_agent.m_transaction_port.connect(m_reg_predictor.bus_in);
     m_ahb_mgr_agent.m_transaction_port.connect(scoreboard.m_ahb_txn_imp);
   endfunction
