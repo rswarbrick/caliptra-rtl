@@ -1975,6 +1975,36 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     // so we cannot and do not perform them in the scoreboard.
   endfunction
 
+  // Return if firmware should be able to insert entropy. This is if all of the following are true:
+  //
+  //  - FW_OV_CONTROL.FW_OV_MODE is MuBi4True. This means that the entropy flow is in firmware
+  //    override mode.
+  //
+  //  - The value being driven to otp_en_entropy_src_fw_over_i is MuBi8True. This configures the dut
+  //    to allow reading entropy from the FW_OV_RD_DATA register.
+  //
+  //  - FW_OV_CONTROL.FW_OV_ENTROPY_INSERT is MuBi4True. This means that firmware is able to insert
+  //    bits into the entropy flow by writing to FW_OV_WR_DATA.
+  function bit get_es_fw_ov_insert_mode();
+    return ((ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value() == MuBi4True) &&
+            (cfg.otp_en_es_fw_over == MuBi8True) &&
+            (ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.get_mirrored_value() == MuBi4True));
+  endfunction
+
+  // Return if firmware should be able to bypass the source. This is if either FIPS mode is disabled
+  // (because CONF.FIPS_ENABLE is not MuBi4True) or if both of the following are true:
+  //
+  //  - ENTROPY_CONTROL.ES_TYPE is MuBi4True. This means that the hardware conditioning inside
+  //    entropy_src is disabled.
+  //
+  //  - ENTROPY_CONTROL.ES_ROUTE is MuBi4True. This means that the generated entropy is written to
+  //    the ENTROPY_DATA register for access by firmware.
+  function bit get_es_bypass_mode();
+    return ((ral.CONF.FIPS_ENABLE.get_mirrored_value() != MuBi4True) ||
+            ((ral.ENTROPY_CONTROL.ES_TYPE.get_mirrored_value() == MuBi4True) &&
+             (ral.ENTROPY_CONTROL.ES_ROUTE.get_mirrored_value() == MuBi4True)));
+  endfunction
+
   // If this is a bus transaction that addresses a register, return the model of that register.
   //
   // If HSIZE means that the transaction doesn't address exactly the bits of the register, this
@@ -2164,6 +2194,26 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       // On a write to the module_enable register, we want to collect coverage for the event.
       if (txn.m_request.m_write && cfg.en_cov) begin
         cov.on_module_enable_write(txn.m_request.m_wdata[3:0] == MuBi4True);
+    end else if (register == ral.FW_OV_WR_FIFO_FULL) begin
+      if (!txn.m_request.m_write) begin
+        bit es_fw_ov_insert_mode = get_es_fw_ov_insert_mode();
+        bit es_bypass_mode = get_es_bypass_mode();
+        bit module_enable = (ral.MODULE_ENABLE.MODULE_ENABLE.get_mirrored_value() == MuBi4True);
+
+        // fw_ov_wr_fifo_full should only be high if we are in the FW override insert mode,
+        // not in bypass mode, the SHA3 is not in the idle state and the precon FIFO is full.
+        //
+        // Note that this computation happened in the design when it saw the address phase
+        // transaction (translated into an A channel transaction). We are one or more cycles later
+        // now, but the computed value only depends on register predictions, which can't have
+        // changed in the meantime.
+        //
+        // Use the calculated prediction (rather than the value in the register model).
+        exp_rdata = ((es_fw_ov_insert_mode &&
+                      ((!es_bypass_mode && precon_fifo_full_q) || !module_enable)) ?
+                     32'b1 :
+                     32'b0);
+      end
     end else if (register == ral.FW_OV_RD_DATA) begin
       if (!txn.m_request.m_write) begin
         // This is a read from the observe FIFO queue.
