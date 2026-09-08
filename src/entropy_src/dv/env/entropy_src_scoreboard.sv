@@ -2154,6 +2154,9 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     // standard uvm_reg_predictor update the register model's prediction later).
     uvm_reg_data_t exp_rdata = register.get_mirrored_value();
 
+    // The mask of bits that are covered by an AHB transaction with the given SIZE field.
+    uvm_reg_data_t mask_from_size = uvm_reg_data_t'(1) << ((1 << txn.m_request.m_size) - 1);
+
     `uvm_info("reg_access",
               $sformatf("Saw %0s register %0s",
                         txn.m_request.m_write ? "write to" : "read from",
@@ -2251,6 +2254,15 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
                       ((!es_bypass_mode && precon_fifo_full_q) || !module_enable)) ?
                      32'b1 :
                      32'b0);
+      end
+    end else if (register == ral.INTERRUPT_STATE) begin
+      if (txn.m_request.m_write) begin
+        clear_interrupts(txn.m_request.m_wdata & mask_from_size);
+      end
+    end else if (register == ral.INTERRUPT_TEST) begin
+      if (txn.m_request.m_write) begin
+        intr_test = txn.m_request.m_wdata & mask_from_size;
+        intr_test_active = 1;
       end
     end
 
