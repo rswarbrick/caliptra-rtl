@@ -138,4 +138,10 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
   function void on_bad_redundancy(invalid_mubi_e where);
     m_cov_vif.cg_mubi_err_sample(where);
   endfunction
+
+  // An event relating to the alert count (either setting the threshold or seeing the threshold be
+  // reached)
+  function void on_alert_count_event(int unsigned threshold, bit has_fired);
+    m_cov_vif.cg_alert_cnt_sample(threshold, has_fired);
+  endfunction
 endclass
