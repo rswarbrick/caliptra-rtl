@@ -909,7 +909,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
           // The DUT should either set the alert, or crash the sim.
           // If we succeed, sample this alert_threshold as covered successfully.
-          cov.get_vif().cg_alert_cnt_sample(alert_threshold, 1);
+          cov.on_alert_count_event(alert_threshold, 1);
         end else if (main_sm_escalates) begin
           fmt = "Main SM in error state, overrides recov alert (Fail cnt: %01d,  thresh: %01d)";
         end else if(threshold_alert_active) begin
@@ -1231,6 +1231,29 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     void'(csr.predict(.value(result), .kind(UVM_PREDICT_WRITE)));
   endfunction
 
+  // Function that reports a failed redundancy check.
+  //
+  // - Updates the prediction for status_field in the RECOV_ALERT_STS register
+  // - Samples the relevant coverpoint for recoverable alert events.
+  //
+  // Arguments:
+  //
+  //  - status_field: The field of RECOV_ALERT_STS that should be updated on a bad value.
+  //
+  //  - which_mubi:   The associated coverpoint value to assert when a bad value is seen.
+  function void on_bad_redundancy(uvm_reg_field  status_field,
+                                  invalid_mubi_e which_mubi);
+    // Predict that the appropriate field in RECOV_ALERT_STS will become true.
+    if (!status_field.predict(1, UVM_PREDICT_READ)) begin
+      `uvm_fatal(get_full_name(),
+                 $sformatf("Failed to predict %0s.%0s.",
+                           status_field.get_parent().get_name(), status_field.get_name()))
+    end
+
+    // Sample coverage for the fact that this has happened
+    if (cfg.en_cov) cov.on_bad_redundancy(which_mubi);
+  endfunction
+
   // Function to check for correct values to register fields with mandatory redundancy
   // (i.e. MultiBit boolean values or the ALERT_THRESHOLD register).
   //
@@ -1252,15 +1275,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
                                      uvm_reg_field  status_field,
                                      invalid_mubi_e which_mubi);
     if (mubi4_test_invalid(mubi4_t'(wdata))) begin
-      // Predict that the appropriate field in RECOV_ALERT_STS will become true.
-      if (!status_field.predict(1, UVM_PREDICT_READ)) begin
-        `uvm_fatal(get_full_name(),
-                   $sformatf("Failed to predict %0s.%0s.",
-                             status_field.get_parent().get_name(), status_field.get_name()))
-      end
-
-      // Sample coverage for the fact that this has happened
-      if (cfg.en_cov) cov.on_bad_redundancy(which_mubi);
+      on_bad_redundancy(status_field, which_mubi);
     end
   endfunction
 
@@ -2228,6 +2243,12 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     return 0;
   endfunction
 
+  function uvm_reg_data_t extract_field_reg_data(uvm_reg_field fld, uvm_reg_data_t reg_data);
+    uvm_reg_data_t mask = (uvm_reg_data_t'(1) << fld.get_n_bits()) - 1;
+
+    return (reg_data >> fld.get_lsb_pos()) & mask;
+  endfunction
+
   // Called with a complete, successful monitored bus transaction item and the register that it
   // addressed.
   function void on_reg_txn(ahb_txn_item txn, uvm_reg register);
@@ -2308,6 +2329,73 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         on_mubi_field_update(fld_wdata,
                              ral.RECOV_ALERT_STS.MODULE_ENABLE_FIELD_ALERT,
                              invalid_module_enable);
+      end
+    end else if (register == ral.CONF) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.FIPS_ENABLE, wdata),
+                             ral.RECOV_ALERT_STS.FIPS_ENABLE_FIELD_ALERT,
+                             invalid_fips_enable);
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.ENTROPY_DATA_REG_ENABLE, wdata),
+                             ral.RECOV_ALERT_STS.ENTROPY_DATA_REG_EN_FIELD_ALERT,
+                             invalid_entropy_data_reg_enable);
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.FIPS_FLAG, wdata),
+                             ral.RECOV_ALERT_STS.FIPS_FLAG_FIELD_ALERT,
+                             invalid_fips_flag);
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.RNG_FIPS, wdata),
+                             ral.RECOV_ALERT_STS.RNG_FIPS_FIELD_ALERT,
+                             invalid_rng_fips);
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.THRESHOLD_SCOPE, wdata),
+                             ral.RECOV_ALERT_STS.THRESHOLD_SCOPE_FIELD_ALERT,
+                             invalid_threshold_scope);
+        on_mubi_field_update(extract_field_reg_data(ral.CONF.RNG_BIT_ENABLE, wdata),
+                             ral.RECOV_ALERT_STS.RNG_BIT_ENABLE_FIELD_ALERT,
+                             invalid_rng_bit_enable);
+
+        propagate_repcnt_to_watermark();
+      end
+    end else if (register == ral.ENTROPY_CONTROL) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+
+        on_mubi_field_update(extract_field_reg_data(ral.ENTROPY_CONTROL.ES_ROUTE, wdata),
+                             ral.RECOV_ALERT_STS.ES_ROUTE_FIELD_ALERT,
+                             invalid_es_route);
+        on_mubi_field_update(extract_field_reg_data(ral.ENTROPY_CONTROL.ES_TYPE, wdata),
+                             ral.RECOV_ALERT_STS.ES_TYPE_FIELD_ALERT,
+                             invalid_es_type);
+
+        propagate_repcnt_to_watermark();
+      end
+    end else if (register == ral.ALERT_THRESHOLD) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+        uvm_reg_data_t pos_wdata, inv_wdata;
+
+        pos_wdata = extract_field_reg_data(ral.ALERT_THRESHOLD.ALERT_THRESHOLD, wdata);
+        inv_wdata = extract_field_reg_data(ral.ALERT_THRESHOLD.ALERT_THRESHOLD_INV, wdata);
+
+        if (inv_wdata != ~pos_wdata) begin
+          on_bad_redundancy(ral.RECOV_ALERT_STS.ES_THRESH_CFG_ALERT,
+                            invalid_alert_threshold);
+        end
+
+        if (cfg.en_cov) begin
+          cov.on_alert_count_event(pos_wdata, 0);
+        end
+      end
+    end else if (register == ral.FW_OV_CONTROL) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+
+        on_mubi_field_update(extract_field_reg_data(ral.FW_OV_CONTROL.FW_OV_MODE, wdata),
+                             ral.RECOV_ALERT_STS.FW_OV_MODE_FIELD_ALERT,
+                             invalid_fw_ov_mode);
+        on_mubi_field_update(extract_field_reg_data(ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT,
+                                                    wdata),
+                             ral.RECOV_ALERT_STS.FW_OV_ENTROPY_INSERT_FIELD_ALERT,
+                             invalid_fw_ov_entropy_insert);
       end
     end else if (register == ral.FW_OV_WR_FIFO_FULL) begin
       if (!txn.m_request.m_write) begin
