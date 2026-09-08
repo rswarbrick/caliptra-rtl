@@ -132,4 +132,10 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
   function void on_read_expected_fifo_entries_since_interrupt(bit [6:0] observe_fifo_thresh);
     m_cov_vif.cg_observe_fifo_threshold_sample(observe_fifo_thresh);
   endfunction
+
+  // There has just been an error caused by a bad redundantly encoded value in the indicated
+  // register/field.
+  function void on_bad_redundancy(invalid_mubi_e where);
+    m_cov_vif.cg_mubi_err_sample(where);
+  endfunction
 endclass
