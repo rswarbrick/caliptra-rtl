@@ -191,10 +191,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // these data points once we notice one of these events.
   bit ignore_fw_ov_data_pulse = 0;
 
-  // Variables used to predict the observe FIFO depth.
-  bit observe_push_busy_addr_phase = 0;
-  bit observe_push_busy = 0;
-
   // Variables used to predict whether the precon FIFO is full or not.
   int precon_fifo_cnt = 0;
   bit sha3_msg_ready = 0;
@@ -1111,9 +1107,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     if ((rst_type == FIFOClr) || (rst_type == Enable)) begin
       observe_fifo_q.delete();
       entropy_data_q.delete();
-      // Clear variables used for observe FIFO depth prediction.
-      observe_push_busy_addr_phase = 0;
-      observe_push_busy = 0;
     end
 
     // reset all other statistics
@@ -1155,6 +1148,12 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     // On a reset of the block, any incomplete read from FW_OV_RD_DATA is aborted.
     if (rst_type == HardReset) begin
       observe_fifo_reads_in_flight = 0;
+    end
+
+    // On a reset of the block, the fifo depth gets reset, clearing any difference tracked in
+    // m_observe_fifo_depth_cbs
+    if (rst_type == HardReset) begin
+      cfg.m_observe_fifo_depth_cbs.on_reset();
     end
 
     `uvm_info(`gfn, $sformatf("%s Detected", rst_type.name), UVM_MEDIUM)
@@ -1552,12 +1551,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
             begin
               cfg.clk_rst_vif.wait_clks(observe_wait_cycles);
               repacked_entropy_release = repacked_entropy_release_q.pop_front();
-              // If the observe FIFO has overflown signal the overflow condition and predict the
+              // If the observe FIFO has overflowed, signal the overflow condition and predict the
               // fw_ov_rd_fifo_overflow register to be set to true. We drop the overflowing data by
               // not pushing into the observe FIFO queue.
-              if (overflow_condition ||
-                  (observe_fifo_q.size() >=
-                   (OBSERVE_FIFO_DEPTH + observe_fifo_reads_in_flight))) begin
+              if (overflow_condition || cfg.m_observe_fifo_depth_cbs.get_predicted_full()) begin
                 overflow_condition = 1;
                 `DV_CHECK_FATAL(ral.FW_OV_RD_FIFO_OVERFLOW.FW_OV_RD_FIFO_OVERFLOW.predict('b1))
 
@@ -1566,13 +1563,9 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
               end else begin
                 observe_fifo_q.push_back(repacked_entropy_release);
               end
-              // Signal to potential reads to observe_fifo_depth that a word is currently being pushed
-              // into the observe FIFO.
-              observe_push_busy = 1;
-              wait(!ral.OBSERVE_FIFO_DEPTH.is_busy());
-              observe_push_busy = 0;
-              `DV_CHECK_FATAL(ral.OBSERVE_FIFO_DEPTH.OBSERVE_FIFO_DEPTH.predict(
-                  `gmv(ral.OBSERVE_FIFO_DEPTH.OBSERVE_FIFO_DEPTH)+1, .kind(UVM_PREDICT_DIRECT)))
+
+              // Increment our prediction of OBSERVE_FIFO_DEPTH
+              cfg.m_observe_fifo_depth_cbs.on_push();
             end
           join_none
 
@@ -2202,28 +2195,12 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       if (!txn.m_request.m_write) begin
         // This is a read from the observe FIFO queue.
 
-        uvm_reg_data_t observe_fifo_depth;
-
-        // We have already incremented observe_fifo_reads_in_flight (so it had better be nonzero).
-        // Decrement it again here.
-        if (!observe_fifo_reads_in_flight) begin
-          `uvm_fatal(get_full_name(),
-                     "Data phase for read of FW_OV_RD_DATA but observe_fifo_reads_in_flight=0.")
-        end
-        observe_fifo_reads_in_flight--;
-
         // Reading from a nonempty fifo will pop something, decreasing OBSERVE_FIFO_DEPTH.
-        observe_fifo_depth = ral.OBSERVE_FIFO_DEPTH.get_mirrored_value();
-        if (observe_fifo_depth) begin
-          observe_fifo_depth--;
-          if (!ral.OBSERVE_FIFO_DEPTH.predict(observe_fifo_depth, UVM_PREDICT_DIRECT)) begin
-            `uvm_fatal(get_full_name(), "Failed to predict OBSERVE_FIFO_DEPTH.")
-          end
-        end
+        cfg.m_observe_fifo_depth_cbs.on_pop();
 
-        // If there is an overflow condition, it ends when the last word is popped from the FIFO
-        // (which happens when decreases to zero). Clear the condition in that situation.
-        if (overflow_condition && !observe_fifo_depth) begin
+        // Any overflow condition ends when the last word is popped from the FIFO (which happens
+        // when OBSERVE_FIFO_DEPTH decreases to zero). Clear the condition in that situation.
+        if (overflow_condition && !cfg.m_observe_fifo_depth_cbs.get_prediction()) begin
           overflow_condition = 0;
           if (!ral.FW_OV_RD_FIFO_OVERFLOW.predict(0, UVM_PREDICT_DIRECT)) begin
             `uvm_fatal(get_full_name(), "Failed to predict FW_OV_RD_FIFO_OVERFLOW.")

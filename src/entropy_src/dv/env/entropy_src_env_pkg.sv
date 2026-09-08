@@ -377,6 +377,7 @@ package entropy_src_env_pkg;
   `uvm_analysis_imp_decl(_ahb_txn)
 
   `include "threshold_field_cbs.svh"
+  `include "observe_fifo_depth_cbs.svh"
 
   // package sources
   `include "entropy_src_dut_cfg.sv"

@@ -50,6 +50,9 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
   // A callback that's used for predicting updates to the various threshold fields
   threshold_field_cbs m_threshold_field_cbs;
 
+  // A callback that's used for predicting OBSERVE_FIFO_DEPTH.OBSERVE_FIFO_DEPTH precisely.
+  observe_fifo_depth_cbs m_observe_fifo_depth_cbs;
+
   // The subordinate index of entropy_src on the AHB bus. This is used to constrain HSEL when
   // sending AHB sequence items.
   //
@@ -291,6 +294,11 @@ class entropy_src_env_cfg extends dv_base_env_cfg #(.RAL_T(entropy_src_uvm::entr
     configure_reg_threshold_direction(ral.MARKOV_LO_THRESHOLDS, 1'b0);
     configure_reg_threshold_direction(ral.EXTHT_HI_THRESHOLDS,  1'b1);
     configure_reg_threshold_direction(ral.EXTHT_LO_THRESHOLDS,  1'b0);
+
+    m_observe_fifo_depth_cbs = observe_fifo_depth_cbs::type_id::create("m_observe_fifo_depth_cbs");
+    m_observe_fifo_depth_cbs.set_field_and_fifo_size(ral.OBSERVE_FIFO_DEPTH.OBSERVE_FIFO_DEPTH,
+                                                     entropy_src_reg_pkg::ObserveFifoDepth);
+    uvm_reg_field_cb::add(ral.OBSERVE_FIFO_DEPTH.OBSERVE_FIFO_DEPTH, m_observe_fifo_depth_cbs);
 
     ral.INTERRUPT_STATE.add_path_slice("u_intr_state_es_entropy_valid.q",
                                        0, 1, BkdrRegPathRtl);
