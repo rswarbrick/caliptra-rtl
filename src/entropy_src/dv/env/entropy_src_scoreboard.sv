@@ -2397,6 +2397,64 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
                              ral.RECOV_ALERT_STS.FW_OV_ENTROPY_INSERT_FIELD_ALERT,
                              invalid_fw_ov_entropy_insert);
       end
+    end else if (register == ral.FW_OV_SHA3_START) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+
+        // The fw_ov_sha3_start field triggers the internal processing of SHA data
+        bit [3:0] start_mubi = ral.FW_OV_SHA3_START.FW_OV_INSERT_START.get_mirrored_value();
+        bit fips_enabled     = (ral.CONF.FIPS_ENABLE.get_mirrored_value() == MuBi4True);
+        bit es_route         = (ral.ENTROPY_CONTROL.ES_ROUTE.get_mirrored_value() == MuBi4True);
+        bit es_type          = (ral.ENTROPY_CONTROL.ES_TYPE.get_mirrored_value() == MuBi4True);
+        bit is_fips_mode     = fips_enabled && !(es_route && es_type);
+        bit [3:0] fw_ov_mubi = ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value();
+
+        bit fw_ov_mode        = (cfg.otp_en_es_fw_over == MuBi8True) && (fw_ov_mubi == MuBi4True);
+        bit [3:0] insert_mubi = ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.get_mirrored_value();
+        bit fw_ov_insert    = fw_ov_mode && (insert_mubi == MuBi4True);
+        bit do_disable_sha  = fw_ov_sha_enabled && (start_mubi == MuBi4False);
+
+        bit write_forbidden = (is_fips_mode ?
+                               cfg.precon_fifo_vif.write_forbidden :
+                               cfg.bypass_fifo_vif.write_forbidden);
+
+        on_mubi_field_update(extract_field_reg_data(ral.FW_OV_SHA3_START.FW_OV_INSERT_START, wdata),
+                             ral.RECOV_ALERT_STS.FW_OV_SHA3_START_FIELD_ALERT,
+                             invalid_fw_ov_insert_start);
+
+        // Disabling the fw_ov_sha3_start field triggers the conditioner, but only
+        // if the DUT is configured properly.
+        if (is_fips_mode && fw_ov_insert && do_disable_sha) begin
+          uvm_reg_field recov_sts_fld = ral.RECOV_ALERT_STS.ES_FW_OV_DISABLE_ALERT;
+          if (fw_ov_pipe_enabled) begin
+            if (write_forbidden) begin
+              // SW _shouldn't_ turn off the SHA3 processing until the last data word
+              // has been processed.  However if it _does_, we should note an alert.
+              // We can also make an accurate prediction of the output (to pass our sims).
+              //
+              // Process the entropy EXCEPT for the last stuck word
+              // which we load into the next round.
+              bit [SHACondWidth - 1:0] sha_temp = sha_process_q.pop_back();
+              `uvm_info(`gfn, "SHA3 disabled for FW_OV (Illegally, data present)", UVM_FULL)
+              package_and_release_entropy();
+              sha_process_q.push_back(sha_temp);
+              `DV_CHECK_FATAL(recov_sts_fld.predict(.value(1'b1), .kind(UVM_PREDICT_READ)));
+            end else begin
+              `uvm_info(`gfn, "SHA3 disabled for FW_OV (Legally)", UVM_FULL)
+              package_and_release_entropy();
+            end
+          end else begin
+            // SHA is disabled while the DUT is disabled.
+            // Another Illegal use case, one that doesn't even process the data.
+            `DV_CHECK_FATAL(recov_sts_fld.predict(.value(1'b1), .kind(UVM_PREDICT_READ)));
+            `uvm_info(`gfn, "SHA3 disabled for FW_OV (Illegally, disabled)", UVM_FULL)
+          end
+        end
+        fw_ov_sha_enabled = (start_mubi == MuBi4True);
+        if (fw_ov_sha_enabled && fw_ov_insert) begin
+          `uvm_info(`gfn, "SHA3 enabled for FW_OV", UVM_HIGH)
+        end
+      end
     end else if (register == ral.FW_OV_WR_FIFO_FULL) begin
       if (!txn.m_request.m_write) begin
         bit es_fw_ov_insert_mode = get_es_fw_ov_insert_mode();
