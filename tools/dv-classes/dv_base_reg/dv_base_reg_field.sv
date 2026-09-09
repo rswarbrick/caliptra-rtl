@@ -67,11 +67,16 @@ class dv_base_reg_field extends uvm_reg_field;
 
   // Issue #5105: UVM forces the value member to be non-randomizable for certain access policies.
   // We restore it in this extended class.
+  //
+  // NOTE (Caliptra port): the override deliberately matches uvm_reg_field::configure() argument-
+  // for-argument. Subclass-specific state (e.g. `mubi_access`) is set via dedicated setters such
+  // as `set_mubi_access()` after configure() — see do_predict() for how it is consumed. This keeps
+  // generated RAL code (e.g. PeakRDL-uvm output) signature-compatible with stock UVM and avoids
+  // shadowing the base method with a different parameter list.
   virtual function void configure(uvm_reg        parent,
                                   int unsigned   size,
                                   int unsigned   lsb_pos,
                                   string         access,
-                                  string         mubi_access,
                                   bit            volatile,
                                   uvm_reg_data_t reset,
                                   bit            has_reset,
@@ -87,11 +92,18 @@ class dv_base_reg_field extends uvm_reg_field;
                       .is_rand  (is_rand),
                       .individually_accessible(individually_accessible));
       value.rand_mode(is_rand);
-      this.mubi_access = mubi_access;
       this.m_original_access = access;
       is_intr_test_fld = !(uvm_re_match("intr_test*", get_parent().get_name()));
       shadowed_val = ~committed_val;
     endfunction
+
+  // Set the mubi access mode. Must be called after configure() and before the parent block is
+  // locked. Accepted values mirror the strings consumed in do_predict() ("W1S", "W1C", "W0C",
+  // "RC"); leave as the default "" for non-mubi fields.
+  function void set_mubi_access(string s);
+    if (is_locked()) `uvm_fatal(`gfn, "Cannot set mubi_access when the block is locked")
+    this.mubi_access = s;
+  endfunction
 
   virtual function dv_base_reg get_dv_base_reg_parent();
     uvm_reg csr = get_parent();

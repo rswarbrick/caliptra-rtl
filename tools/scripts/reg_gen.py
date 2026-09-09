@@ -202,7 +202,7 @@ def emit_uvm(
     """
     uvm_out = dv_output_dir / f"{rdl_file.stem}_uvm.sv"
     exporter = UVMExporter(user_template_dir=str(uvm_template_dir))
-    exporter.export(root, str(uvm_out))
+    exporter.export(root, str(uvm_out), use_uvm_factory=True)
     rdl_post_process.strip_trailing_whitespace(uvm_out)
 
 

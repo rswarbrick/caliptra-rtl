@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// DV-only composite address map for block-level UVM RAL generation.
+//
+// The sha3_ctrl module defines a single AHB subordinate (through an ahb_slv_sif instance). Inside
+// sha3_ctrl, this is exposed using the Valid-Hold interface, which is then split into two different
+// connections with an instance of caliptra_tlul_adapter_vh.
+//
+//   - A TLUL interface that connects to the kmac block from OpenTitan
+//   - A Valid-Hold interface connecting to a standard Caliptra CSR block: an instance of sha3_reg.
+//
+// The instance of caliptra_tlul_adapter_vh has VH_REGISTER_ADDRESS_OFFSET = 0x1000, meaning that
+// the registers of sha3_reg are at addresses offset by 0x1000 from the registers from the kmac
+// block.
+//
+// That is reflected in caliptra_reg.rdl. This file represents just the sha3 subset of the register
+// interfaces in that map.
+`include "kmac_reg.rdl"
+`include "sha3_reg.rdl"
+
+addrmap sha3_ctrl_dv_reg {
+    desc = "Block-level DV composite map for SHA3_CTRL (OT core + Caliptra wrapper).";
+
+    kmac_reg kmac_core @ 0x0000;
+    sha3_reg clp_reg   @ 0x1000;
+};

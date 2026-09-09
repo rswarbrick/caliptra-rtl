@@ -6,7 +6,7 @@
 {% macro class_definition(node) -%}
 {%- if class_needs_definition(node) %}
 // {{get_class_friendly_name(node)}}
-class {{get_class_name(node)}} extends uvm_reg;
+class {{get_class_name(node)}} extends dv_base_reg;
 {%- if use_uvm_factory %}
     `uvm_object_utils({{get_class_name(node)}})
 {%- endif %}
@@ -86,7 +86,7 @@ reg_bit_edge_cp : coverpoint reg_bit {
 //------------------------------------------------------------------------------
 {% macro child_insts(node) -%}
 {%- for field in node.fields() -%}
-rand uvm_reg_field {{get_inst_name(field)}};
+rand dv_base_reg_field {{get_inst_name(field)}};
 {% endfor -%}
 {%- endmacro %}
 
@@ -167,7 +167,7 @@ endfunction
 virtual function void build();
     {%- for field in node.fields() %}
     {%- if use_uvm_factory %}
-    this.{{get_inst_name(field)}} = uvm_reg_field::type_id::create("{{get_inst_name(field)}}");
+    this.{{get_inst_name(field)}} = dv_base_reg_field::type_id::create("{{get_inst_name(field)}}");
     {%- else %}
     this.{{get_inst_name(field)}} = new("{{get_inst_name(field)}}");
     {%- endif %}

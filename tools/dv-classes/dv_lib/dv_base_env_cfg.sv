@@ -258,7 +258,7 @@ function void dv_base_env_cfg::make_ral_model(string       ral_model_name,
     // Build the register block with an arbitrary base address (we choose 0). We'll change it
     // later.
     pre_build_ral_settings(reg_blk);
-    reg_blk.build(.base_addr(0), .csr_excl(null));
+    reg_blk.build();
     reg_blk.addr_width = addr_width;
     reg_blk.data_width = data_width;
     reg_blk.be_width   = be_width;

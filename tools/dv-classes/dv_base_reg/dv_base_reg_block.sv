@@ -113,6 +113,12 @@ class dv_base_reg_block extends uvm_reg_block;
     return csr_excl;
   endfunction
 
+  // Attach a CSR exclusion item to the block. Must be called before build() if the subclass build
+  // implementation needs to consult it (e.g. to propagate to sub-blocks).
+  virtual function void set_csr_excl(csr_excl_item excl);
+    csr_excl = excl;
+  endfunction
+
   function void set_unmapped_access_ok(bit ok);
     unmapped_access_ok = ok;
   endfunction
@@ -145,9 +151,16 @@ class dv_base_reg_block extends uvm_reg_block;
     return allows_csr_fetch;
   endfunction
 
-  // provide build function to supply base addr
-  virtual function void build(uvm_reg_addr_t base_addr,
-                              csr_excl_item csr_excl = null);
+  // Generated subclasses override this to populate the register block.
+  //
+  // NOTE (Caliptra port): historically this override took (base_addr, csr_excl) extra args.
+  // That signature *shadowed* uvm_reg_block::build() (which is no-arg) rather than overriding
+  // it, with the same hazards as the dv_base_reg_field::configure case (any UVM-internal
+  // dispatch through the base handle silently bypasses this method). Subclass-specific state
+  // is now set via dedicated setters: set_base_addr() (already present below) and
+  // set_csr_excl(). Generated build() implementations hard-code create_map with base_addr=0;
+  // callers (e.g. dv_base_env_cfg) invoke set_base_addr() after lock_model().
+  virtual function void build();
     `uvm_fatal(`gfn, "this method is not supposed to be called directly!")
   endfunction
 

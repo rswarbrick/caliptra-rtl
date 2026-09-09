@@ -102,8 +102,12 @@ def strip_trailing_whitespace(fname: PathLike) -> None:
 # sections below.
 # ============================================================================
 
-# Matches `struct` optionally followed by `unpacked`.
-_STRUCT_RE = re.compile(r'\bstruct\b\s*(?:unpacked)?')
+# Matches `struct` optionally followed by `unpacked`.  A negative lookahead
+# skips `struct packed` so the rewrite is idempotent: peakrdl-regblock 1.3.1
+# emits `struct packed` natively for external-field structs while still
+# emitting bare `struct {` for internal reg structs, so we must fix only
+# the latter.
+_STRUCT_RE = re.compile(r'\bstruct\b(?!\s+packed\b)\s*(?:unpacked)?')
 
 # Matches a constant unpacked dimension, e.g. `[2]`.
 _UNPACKED_DIM_RE = re.compile(r'\[\d+\]')
@@ -114,10 +118,6 @@ _UNPACKED_DIM_RE = re.compile(r'\[\d+\]')
 _UNPACKED_TO_PACKED_RE = re.compile(
     r'(\s*)(\[[\w-]+:0\])*(\s*\w+)\s*(\[\d+\])*\[(\d+)\]'
 )
-
-# Matches a bare `typedef enum` with no explicit base type.
-_TYPEDEF_ENUM_RE = re.compile(r'\btypedef enum\b(?!\s+logic)')
-
 
 def fix_unpacked_struct(line: str) -> str:
     """Force ``struct`` declarations to be packed.
@@ -187,38 +187,11 @@ def fix_unpacked_array_dim(line: str) -> str:
     return line
 
 
-def fix_typedef_enum_base(line: str) -> str:
-    """Force ``typedef enum`` declarations to have a 32-bit ``logic`` base.
-
-    peakrdl-regblock emits enum typedefs as::
-
-        typedef enum { ... } foo_e;
-
-    A bare SystemVerilog ``enum`` defaults to ``int`` (32-bit signed
-    2-state), which loses X-propagation and mismatches the 4-state
-    ``logic`` signals the enum values are assigned to in the generated
-    block.  Rewrite to::
-
-        typedef enum logic [31:0] { ... } foo_e;
-
-    Idempotent: ``typedef enum logic ...`` lines are left alone via a
-    negative lookahead in :data:`_TYPEDEF_ENUM_RE`.
-
-    **Category:** upstream workaround.
-    **Removal:** when peakrdl-regblock emits an explicit base type on
-    enum typedefs (or exposes a knob to do so).
-    """
-    if _TYPEDEF_ENUM_RE.search(line) is None:
-        return line
-    return _TYPEDEF_ENUM_RE.sub('typedef enum logic [31:0]', line)
-
-
 # Ordered list of per-line fixes.  Drop entries as upstream lands each fix;
 # delete the whole scrub pass once this list is empty.
 FIXES: List[Callable[[str], str]] = [
     fix_unpacked_struct,
     fix_unpacked_array_dim,
-    fix_typedef_enum_base,
 ]
 
 

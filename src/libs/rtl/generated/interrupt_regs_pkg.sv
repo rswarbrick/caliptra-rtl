@@ -5,6 +5,7 @@ package interrupt_regs_pkg;
 
     localparam INTERRUPT_REGS_DATA_WIDTH = 32;
     localparam INTERRUPT_REGS_MIN_ADDR_WIDTH = 10;
+    localparam INTERRUPT_REGS_SIZE = 'h220;
 
     typedef struct packed{
         logic hwset;

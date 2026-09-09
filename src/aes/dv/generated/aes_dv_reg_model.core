@@ -1,0 +1,22 @@
+CAPI=2:
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+name: "caliptra:dv:aes_dv_ral:0.1"
+description: "UVM register model for aes"
+filesets:
+  files_dv:
+    depend:
+      - lowrisc:dv:dv_base_reg
+    files:
+      - aes_dv_reg_sample.svh: {is_include_file: true}
+      - aes_dv_reg_covergroups.svh: {is_include_file: true}
+      - aes_dv_reg_uvm.sv
+    file_type: systemVerilogSource
+
+targets:
+  default:
+    toplevel: tb
+    filesets:
+      - files_dv
+    default_tool: vcs

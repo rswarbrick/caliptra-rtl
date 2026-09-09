@@ -21,15 +21,15 @@ requires-python = ">=3.13, <3.14"
 
 dependencies = [
   # SystemRDL compiler (version ceiling enforced by peakrdl-regblock)
-  "systemrdl-compiler==1.27.3",
+  "systemrdl-compiler",
 
   # PeakRDL CLI umbrella (provides the `peakrdl` command)
-  "peakrdl==1.1.0",
+  "peakrdl",
 
   # PeakRDL exporters
-  "peakrdl-regblock==0.21.0",
-  "peakrdl-uvm==2.3.0",
-  "peakrdl-html==2.10.1",
+  "peakrdl-regblock",
+  "peakrdl-uvm",
+  "peakrdl-html",
 ]
 
 [tool.uv]
