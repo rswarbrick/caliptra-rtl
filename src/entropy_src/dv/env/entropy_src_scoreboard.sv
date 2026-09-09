@@ -2714,6 +2714,12 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         // were last able to do a register prediction.
         exp_rdata = cfg.m_observe_fifo_depth_cbs.get_prediction();
       end
+    end else if (register == ral.RECOV_ALERT_STS) begin
+      if (cfg.en_cov) begin
+        for (unsigned i = 0; i < 32; i++) begin
+          if (txn.m_response.m_rdata[i]) cov.on_recov_alert_sts(i);
+        end
+      end
     end else if (register == ral.ERR_CODE_TEST) begin
       if (txn.m_request.m_write) begin
         uvm_reg_field  test_field   = ral.ERR_CODE_TEST.ERR_CODE_TEST;

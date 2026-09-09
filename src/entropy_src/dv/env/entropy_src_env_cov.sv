@@ -195,4 +195,10 @@ class entropy_src_env_cov extends dv_base_env_cov #(.CFG_T(entropy_src_env_cfg))
                                         mubi4_t'(fw_ov_entropy_insert),
                                         full_seed_found);
   endfunction
+
+  // Called when the RECOV_ALERT_STS register has been read with the bit corresponding to the given
+  // alert set.
+  function void on_recov_alert_sts(int unsigned alert_idx);
+    m_cov_vif.cg_recov_alert_sample(alert_idx);
+  endfunction
 endclass
