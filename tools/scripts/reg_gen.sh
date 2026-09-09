@@ -56,8 +56,10 @@ $REG_GEN $CALIPTRA_ROOT/src/sha256/rdl/sha256_reg.rdl                 \
     --emit-dv  --dv-output  $CALIPTRA_ROOT/src/sha256/dv/generated
 
 $REG_GEN $CALIPTRA_ROOT/src/sha3/rdl/sha3_reg.rdl                     \
-    --emit-rtl --rtl-output $CALIPTRA_ROOT/src/sha3/rtl/generated      \
-    --emit-dv  --dv-output  $CALIPTRA_ROOT/src/sha3/dv/generated
+    --emit-rtl --rtl-output $CALIPTRA_ROOT/src/sha3/rtl/generated
+
+$REG_GEN $CALIPTRA_ROOT/src/sha3/rdl/sha3_ctrl_dv_reg.rdl             \
+    --emit-dv  --dv-output  $CALIPTRA_ROOT/src/sha3/dv/reg_model
 
 $REG_GEN $CALIPTRA_ROOT/src/entropy_combiner/rdl/entropy_combiner_reg.rdl \
     --emit-rtl --rtl-output $CALIPTRA_ROOT/src/entropy_combiner/rtl/generated \
