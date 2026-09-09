@@ -45,7 +45,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   int observe_fifo_words    = 0;
 
   bit dut_pipeline_enabled = 0;
-  bit regwen_pending = 0;
   bit ht_fips_mode = 0;
 
   // The FW_OV pipeline is controlled by two variables: SHA3_START and MODULE_ENABLE
@@ -249,6 +248,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       fork
         process_csrng();
         process_fifo_exceptions();
+        collect_entropy_tracker();
         health_test_scoring_thread();
         predict_fw_ov_wr_full();
       join_none
@@ -1090,7 +1090,6 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       repack_idx_fw_ov = 0;
       intr_test = '0;
       intr_test_active = 0;
-      regwen_pending = 0;
     end
 
     if (rst_type == Disable) begin
@@ -1242,35 +1241,26 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // - Samples the relevant coverpoint for recoverable alert events.
   //
   // Arguments:
-  // reg_name: the register to check
-  // mubi_field: the specific field to examine (when checking for bad MuBi's)
-  // sts_field_name: the name of the field to assert
-  // which_mubi: The associated coverpoint value to assert when a bad
-  //             redundancy is discovered. (includes bad writes to alert threshold
-  //             as well as all MuBi fields).
-  virtual function void check_redundancy_val(string reg_name, string mubi_field,
-                                            string sts_field_name, invalid_mubi_e which_mubi);
-    bit bad_redundancy;
-    // Check the currently predicted value for the desired register and field
-    //
-    // Almost all of the redundant values are isolated MultiBit Booleans except for
-    // ALERT_THRESHOLD in which the threhold field must equal the inverse of the
-    // inverse threshold field.
-    if (reg_name != "alert_threshold") begin
-      bad_redundancy = mubi4_test_invalid(
-          mubi4_t'(get_reg_fld_mirror_value(ral, reg_name, mubi_field)));
-    end else begin
-      bit [15:0] thresh     = get_reg_fld_mirror_value(ral, "alert_threshold", "alert_threshold");
-      bit [15:0] thresh_inv = get_reg_fld_mirror_value(ral, "alert_threshold",
-                                                       "alert_threshold_inv");
-      bad_redundancy = (thresh != ~thresh_inv);
-    end
+  //
+  //  - wdata:        The value that is being written. (Note that the narrow type makes it easier
+  //                  for callers to extract this with just a shift - no mask needed).
+  //
+  //  - status_field: The field of RECOV_ALERT_STS that should be updated on a bad value.
+  //
+  //  - which_mubi:   The associated coverpoint value to assert when a bad value is seen.
+  function void on_mubi_field_update(bit [3:0]      wdata,
+                                     uvm_reg_field  status_field,
+                                     invalid_mubi_e which_mubi);
+    if (mubi4_test_invalid(mubi4_t'(wdata))) begin
+      // Predict that the appropriate field in RECOV_ALERT_STS will become true.
+      if (!status_field.predict(1, UVM_PREDICT_READ)) begin
+        `uvm_fatal(get_full_name(),
+                   $sformatf("Failed to predict %0s.%0s.",
+                             status_field.get_parent().get_name(), status_field.get_name()))
+      end
 
-    if (bad_redundancy) begin
-      uvm_reg_field sts_field = ral.RECOV_ALERT_STS.get_field_by_name(sts_field_name);
-      `DV_CHECK_FATAL(sts_field.predict(.value(1'b1), .kind(UVM_PREDICT_READ)))
-
-      cov.get_vif().cg_mubi_err_sample(which_mubi);
+      // Sample coverage for the fact that this has happened
+      if (cfg.en_cov) cov.on_bad_redundancy(which_mubi);
     end
   endfunction
 
@@ -1592,6 +1582,106 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         end
       end
     end
+  endtask
+
+  // A task that runs forever, starting collect_entropy whenever the pipeline is enabled
+  task collect_entropy_tracker();
+    forever begin
+      wait(dut_pipeline_enabled);
+
+      // The dut_pipeline_enabled bit has just been asserted because of a write to MODULE_ENABLE.
+      fork : isolation_fork_on begin
+        fork
+          // This is the main process, which will run collect_entropy until the pipeline is disabled
+          // again (or a reset is asserted)
+          begin
+            handle_disable_reset(Enable);
+            fifos_cleared = 0;
+            collect_entropy();
+            // The DUT internals could take as long as three clocks to clear.
+            cfg.clk_rst_vif.wait_clks(3);
+            handle_disable_reset(Disable);
+          end
+
+          begin
+            cfg.clk_rst_vif.wait_clks(2);
+            fw_ov_pipe_enabled = 1;
+            wait(0);
+          end
+
+          // Wait for regwen to be updated to zero (disabling register updates while the pipeline is
+          // enabled). This is safe to kill again if collect_entropy finishes too quickly.
+          begin
+            wait_for_regwen_update(0);
+            wait(0);
+          end
+        join_any
+
+        // The only process that can complete is the main process that was running collect_entropy.
+        // Disable the other two (which can be disabled safely).
+        disable fork;
+      end join
+
+      // At this point, whe pipeline should have just been disabled (which caused collect_entropy to
+      // finish). Check that collect_entropy didn't leave early (which would cause the wait at the
+      // start of the next iteration to leave in zero time)
+      if (dut_pipeline_enabled) begin
+        `uvm_fatal(get_full_name(),
+                   "collect_entropy ended when dut_pipeline_enabled was still true.")
+      end
+
+      // Wait for regwen to be updated to re-enable register updates now that the pipeline is
+      // disabled. Update the register model to match.
+      //
+      // If reset is asserted or dut_pipeline_enabled becomes true again, kill
+      // wait_for_regwen_update and drop out.
+      fork : isolation_fork_off begin
+        fork
+          wait(dut_pipeline_enabled);
+          wait(cfg.under_reset);
+          wait_for_regwen_update(1 & ral.SW_REGUPD.SW_REGUPD.get_mirrored_value());
+        join_any
+        disable fork;
+      end join
+
+      // At this point, the pipeline is probably disabled and we might be in reset. Go around the
+      // loop again, which will start by waiting for the pipeline to be enabled (which is only
+      // possible when out of reset).
+    end
+  endtask
+
+  // Repeatedly peek at the REGWEN register, waiting for it to match the expected value.
+  //
+  // Exit early on reset, or if SW_REGUPD is predicted to be zero (because that will itself cause
+  // REGWEN to be false).
+  //
+  // This task is safe to disable at any time.
+  task wait_for_regwen_update(bit expected_enable);
+    fork : isolation_fork begin
+      fork
+        wait(cfg.under_reset);
+        begin
+          #(default_spinwait_timeout_ns * 1ns);
+          `uvm_error(get_full_name(),
+                     $sformatf("REGWEN not updated to %0d in %0d ns.",
+                               expected_enable, default_spinwait_timeout_ns))
+        end
+        begin
+          bit seen_enable;
+          do begin
+            cfg.clk_rst_vif.wait_clks(1);
+            seen_enable = csr_peek(.ptr(ral.REGWEN.REGWEN));
+          end while (expected_enable != seen_enable);
+
+          // We have just done a backdoor read of REGWEN and seen the expected value. Tell the
+          // register model about the read.
+          if (!ral.REGWEN.REGWEN.predict(seen_enable, UVM_PREDICT_READ)) begin
+            `uvm_fatal(get_full_name(), "Failed to predict REGWEN after read.")
+          end
+        end
+      join_any
+      disable fork;
+    end join
   endtask
 
   // Propagate internal repetition counter to watermark register.  Call this function when changing
@@ -2183,10 +2273,42 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         intr_test        = txn.m_request.m_wdata[NumEntropySrcIntr-1:0] & mask_from_size;
         intr_test_active = 1;
       end
+    end else if (register == ral.SW_REGUPD) begin
+      // The SW_REGUPD register controls REGWEN (which itself is a read-only register). SW_REGUPD
+      // just contains a field with swaccess rw0c, so we just need to update REGWEN to zero when
+      // SW_REGUPD is written to clear that field.
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata     = (txn.m_request.m_wdata & mask_from_size);
+        bit            fld_wdata = (wdata >> ral.SW_REGUPD.SW_REGUPD.get_lsb_pos()) & 1;
+
+        // Predict REGWEN with kind UVM_PREDICT_READ: we're certain about the update that this
+        // register write will cause, and using UVM_PREDICT_READ means we won't collide with any
+        // pending register layer sequence.
+        if (!fld_wdata) begin
+          if (!ral.REGWEN.REGWEN.predict(0, UVM_PREDICT_READ)) begin
+            `uvm_fatal(get_full_name(), "Failed to predict clearing of REGWEN.")
+          end
+        end
+      end
     end else if (register == ral.MODULE_ENABLE) begin
-      // On a write to the module_enable register, we want to collect coverage for the event.
-      if (txn.m_request.m_write && cfg.en_cov) begin
-        cov.on_module_enable_write(txn.m_request.m_wdata[3:0] == MuBi4True);
+      if (txn.m_request.m_write) begin
+        uvm_reg_field fld = ral.MODULE_ENABLE.MODULE_ENABLE;
+        uvm_reg_data_t reg_wdata = (txn.m_request.m_wdata & mask_from_size);
+        uvm_reg_data_t fld_wdata = (reg_wdata >> fld.get_lsb_pos()) & ((1 << fld.get_n_bits()) - 1);
+
+        // Update dut_pipeline_enabled, which controls the collect_entropy_tracker task.
+        dut_pipeline_enabled = (fld_wdata == MuBi4True);
+
+        // Collect coverage for the write.
+        if (cfg.en_cov) begin
+          cov.on_module_enable_write(dut_pipeline_enabled);
+        end
+
+        // Because MODULE_ENABLE uses a mubi value, check that any bad value will be noticed
+        on_mubi_field_update(fld_wdata,
+                             ral.RECOV_ALERT_STS.MODULE_ENABLE_FIELD_ALERT,
+                             invalid_module_enable);
+      end
     end else if (register == ral.FW_OV_WR_FIFO_FULL) begin
       if (!txn.m_request.m_write) begin
         bit es_fw_ov_insert_mode = get_es_fw_ov_insert_mode();
