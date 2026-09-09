@@ -946,55 +946,153 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
   endfunction
 
+  // Return true if the candidate seed in new_candidate contains a 32-bit word that could match
+  // the words that have been seen so far, followed by rdata.
   //
-  // Helper functions for process_entropy_data_csr_access
+  // This uses seed_tl_read_cnt (for the number of 32-bit words that have already been matched
+  // against the current seed).
   //
-
-  function bit try_seed_tl(input bit [CSRNG_BUS_WIDTH - 1:0] new_candidate,
-                           input bit [31:0] tl_data,
-                           output bit [31:0] tl_prediction);
+  // If the seed *does* match, then it also switches the currently chosen seed (in
+  // tl_best_seed_candidate), to be compared with in the next iteration.
+  function bit try_seed_for_rdata(bit [CSRNG_BUS_WIDTH-1:0] new_candidate,
+                                  bit [31:0]                rdata);
     bit [CSRNG_BUS_WIDTH - 1:0] mask, new_seed_masked, best_seed_masked;
-    bit matches_prev_reads;
-    bit matches_tl_data;
-    string fmt;
+    bit [31:0]                  predicted_rdata;
 
-    mask = '0;
+    // Compute the mask of bits that have already been seen
+    mask = (CSRNG_BUS_WIDTH'(1) << ((32 * seed_tl_read_cnt) - 1)) - 1;
 
-    for(int i = 0; i < seed_tl_read_cnt; i++) begin
-      mask[i * 32 +: 32] = {32{1'b1}};
-    end
-    new_seed_masked = (new_candidate & mask);
+    // Extract those bits from tl_best_seed_candidate, which we know matches the reads that have
+    // been seen so far.
     best_seed_masked = (tl_best_seed_candidate & mask);
-    matches_prev_reads = (best_seed_masked == new_seed_masked);
 
-    if (matches_prev_reads) begin
-      // Only log this if the new seed is different from the previous best:
-      if (new_candidate != tl_best_seed_candidate) begin
-        string fmt = "Found another match candidate after %01d total dropped seeds";
-       `uvm_info(`gfn, $sformatf(fmt, entropy_data_drops), UVM_HIGH)
-      end
-    end else begin
+    // Extract the bits from the new candidate: if we had actually been working through it then they
+    // will equal best_seed_masked.
+    new_seed_masked = (new_candidate & mask);
+
+    // Doesn't look like this candidate matches the words that had already been read. Leave a log
+    // message and exit.
+    if (new_seed_masked != best_seed_masked) begin
       `uvm_info(`gfn, "New candidate seed does not match previous segments", UVM_HIGH)
-      fmt = "New seed: %096h, Best seed: %096h";
       // In the log mask out portions that have not been compared yet, for contrast
-      `uvm_info(`gfn, $sformatf(fmt, new_seed_masked, best_seed_masked), UVM_HIGH)
+      `uvm_info(get_full_name(),
+                $sformatf("New seed: %096h, Best seed: %096h", new_seed_masked, best_seed_masked),
+                UVM_HIGH)
        return 0;
     end
 
-    tl_prediction = new_candidate[32 * seed_tl_read_cnt +: 32];
-    matches_tl_data = (tl_prediction == tl_data);
-
-    if (tl_prediction == tl_data) begin
-      tl_best_seed_candidate = new_candidate;
-      fmt = "Seed matches TL data after %d TL reads";
-      `uvm_info(`gfn, $sformatf(fmt, seed_tl_read_cnt+1), UVM_HIGH)
-      return 1;
-    end else begin
-      fmt = "TL DATA (%08h) does not match predicted seed segment (%08h)";
-      `uvm_info(`gfn, $sformatf(fmt, tl_data, tl_prediction), UVM_HIGH)
-      return 0;
+    // If we get here then we must have matched all of the words that had already been read. Print a
+    // log message if it's different from the current best-known candidate.
+    if (new_candidate != tl_best_seed_candidate) begin
+     `uvm_info(get_full_name(),
+               $sformatf("Found another match candidate after %01d total dropped seeds",
+                         entropy_data_drops),
+               UVM_HIGH)
     end
 
+    // Grab the expected next 32 bits (we don't have to mask out the top because the target is only
+    // 32 bits wide).
+    predicted_rdata = (new_candidate >> (32 * seed_tl_read_cnt));
+
+    if (rdata == predicted_rdata) begin
+      // The candidate word matches the next 32 bits, so we should switch to it (a no-op if we were
+      // already pointing at it).
+      tl_best_seed_candidate = new_candidate;
+      `uvm_info(get_full_name(),
+                $sformatf("Seed matches TL data after %d TL reads", seed_tl_read_cnt+1),
+                UVM_HIGH)
+      return 1;
+    end else begin
+      `uvm_info(get_full_name(),
+                $sformatf("TL DATA (%08h) does not match predicted seed segment (%08h)",
+                          rdata, predicted_rdata),
+                UVM_HIGH)
+      return 0;
+    end
+  endfunction
+
+  // Helper function that runs when a value is read from the ENTROPY_DATA register
+  //
+  // Since the DUT may, by design, internally drop data, it is not sufficient to check against one
+  // seed: we compare TL data values against all available seeds. If no match is found then the
+  // access is in error.
+  function void on_entropy_data_read(bit [31:0] rdata);
+    // Is the entropy data register currently enabled?
+    bit entropy_data_reg_enable;
+
+    // Have we found a match yet in the loop?
+    bit match_found;
+
+    // The ENTROPY_DATA register is enabled iff the top-level otp_en_entropy_src_fw_read_i port is
+    // MuBi8True and CONF.ENTROPY_DATA_REG_ENABLE is MuBi4True.
+    entropy_data_reg_enable = (cfg.otp_en_es_fw_read == MuBi8True) &&
+                              (ral.CONF.ENTROPY_DATA_REG_ENABLE.get_mirrored_value() == MuBi4True);
+
+    // If ENTROPY_DATA is not enabled or if the module is not enabled then we ignore the contents of
+    // the ENTROPY_DATA fifo: nothing to do here.
+    if(!entropy_data_reg_enable || !dut_pipeline_enabled) return;
+
+    while (entropy_data_q.size() > 0 && !match_found) begin
+      // Does rdata match data we expect from the seed at the start of entropy_data_q?
+      match_found = try_seed_for_rdata(entropy_data_q[0], rdata);
+
+      if (!match_found) begin
+        // Doesn't look like that's the right seed. Drop it from the queue and go around again.
+        bit [CSRNG_BUS_WIDTH-1:0] dropped_seed;
+        dropped_seed = entropy_data_q.pop_front();
+        entropy_data_drops++;
+      end else begin
+        // We have a seed that matches. Success!
+
+        // Does the matching word finish the current seed?
+        bit finished_seed;
+
+        // Increment seed_tl_read_cnt to represent the fact that we have just consumed another 32
+        // bits from the CSRNG word.
+        seed_tl_read_cnt++;
+
+        // If we have now read the entire seed, we're done with that one. Pop from entropy_data_q and
+        // zero seed_tl_read_cnt again. Increment a couple of counters to track the seeds that have
+        // been consumed.
+        if (seed_tl_read_cnt == CSRNG_BUS_WIDTH / 32) begin
+          bit [CSRNG_BUS_WIDTH-1:0] dropped_seed;
+          dropped_seed = entropy_data_q.pop_front();
+
+          finished_seed = 1;
+
+          seed_tl_read_cnt = 0;
+          entropy_data_seeds++;
+          cfg.total_seeds_consumed++;
+        end else if (seed_tl_read_cnt > CSRNG_BUS_WIDTH / 32) begin
+          `uvm_fatal(get_full_name(), "testbench error: too many segments read from candidate seed")
+        end
+
+        if (cfg.en_cov) begin
+          cov.on_entropy_data_read(ral.CONF.FIPS_ENABLE.get_mirrored_value(),
+                                   ral.CONF.FIPS_FLAG.get_mirrored_value(),
+                                   ral.CONF.RNG_FIPS.get_mirrored_value(),
+                                   ral.CONF.THRESHOLD_SCOPE.get_mirrored_value(),
+                                   ral.CONF.RNG_BIT_ENABLE.get_mirrored_value(),
+                                   ral.CONF.RNG_BIT_SEL.get_mirrored_value(),
+                                   ral.ENTROPY_CONTROL.ES_ROUTE.get_mirrored_value(),
+                                   ral.ENTROPY_CONTROL.ES_TYPE.get_mirrored_value(),
+                                   ral.CONF.ENTROPY_DATA_REG_ENABLE.get_mirrored_value(),
+                                   cfg.otp_en_es_fw_read,
+                                   ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value(),
+                                   cfg.otp_en_es_fw_over,
+                                   ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.get_mirrored_value(),
+                                   finished_seed);
+        end
+
+        // We have found a match! Set a flag to say so, which will cause the loop to stop.
+        match_found = 1;
+      end
+    end
+
+    if (!match_found) begin
+      `uvm_error(get_full_name(),
+                 "Observed value from ENTROPY_DATA did not match any item in the queue.")
+    end
   endfunction
 
   function void clear_ht_stat_predictions();
@@ -2399,6 +2497,13 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
                              invalid_es_type);
 
         propagate_repcnt_to_watermark();
+      end
+    end else if (register == ral.ENTROPY_DATA) begin
+      if (!txn.m_request.m_write) begin
+        check_rdata = 0;
+        if (!fifos_cleared) begin
+          on_entropy_data_read(txn.m_response.m_rdata[31:0]);
+        end
       end
     end else if (register == ral.ALERT_THRESHOLD) begin
       if (txn.m_request.m_write) begin
