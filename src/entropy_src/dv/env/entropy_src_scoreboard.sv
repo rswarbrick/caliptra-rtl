@@ -2516,6 +2516,60 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
           end
         end
       end
+    end else if (register == ral.FW_OV_WR_DATA) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_data_t wdata = (txn.m_request.m_wdata & mask_from_size);
+
+        bit module_enabled = (ral.MODULE_ENABLE.MODULE_ENABLE.get_mirrored_value() == MuBi4True);
+        bit predict_conditioned = do_condition_data();
+        bit fw_ov_entropy_insert =
+            (cfg.otp_en_es_fw_over == MuBi8True) &&
+            (ral.FW_OV_CONTROL.FW_OV_MODE.get_mirrored_value() == MuBi4True) &&
+            (ral.FW_OV_CONTROL.FW_OV_ENTROPY_INSERT.get_mirrored_value() == MuBi4True);
+
+        if (ignore_fw_ov_data_pulse) begin
+          `uvm_info(get_full_name(),
+                    $sformatf("fw_ov_wr_data dropped: 0x%08x", wdata),
+                    UVM_LOW)
+        end else begin
+          `uvm_info(get_full_name(),
+                    $sformatf("fw_ov_wr_data captured: 0x%08x", wdata),
+                    UVM_FULL)
+        end
+
+        if (fw_ov_pipe_enabled && fw_ov_entropy_insert && !ignore_fw_ov_data_pulse) begin
+          `uvm_info(`gfn, $sformatf("Inserting word 0x%08x into pipeline", wdata), UVM_MEDIUM)
+          // Add this TL-word to the running SHA word
+          repacked_entropy_fw_ov = {wdata[31:0],
+                                    repacked_entropy_fw_ov[32 +: (SHACondWidth - 32)]};
+          repack_idx_fw_ov++;
+          `uvm_info(`gfn, $sformatf("repack_idx_fw_ov: %016x", repack_idx_fw_ov), UVM_HIGH)
+          if (repack_idx_fw_ov == SHACondWidth/32) begin
+            repack_idx_fw_ov = 0;
+            `uvm_info(`gfn, $sformatf("fw_ov SHA word: %016x", repacked_entropy_fw_ov), UVM_HIGH)
+            if (predict_conditioned) begin
+              sha_process_q.push_back(repacked_entropy_fw_ov);
+            end else begin
+              raw_process_q.push_back(repacked_entropy_fw_ov);
+            end
+            // In bypass mode, data is automatically released when a full seed is acquired
+            if (! predict_conditioned &&
+                raw_process_q.size() == (CSRNG_BUS_WIDTH / SHACondWidth)) begin
+              package_and_release_entropy();
+            end
+          end
+        end
+
+        // Count the number of words in the precon FIFO.
+        // When module_enabled is low the the FIFO is cleared. When precon_fifo_full_q
+        // is high we dropped the current word. Otherwise, the FIFO is not full yet and/or
+        // has been popped since it was last in the full state.
+        precon_fifo_cnt = !module_enabled ? 0 :
+                          precon_fifo_full_q ? precon_fifo_cnt :
+                          (precon_fifo_cnt == 2) ? 1 : precon_fifo_cnt + 1;
+        // Notify predict_fw_ov_wr_full() that fw_ov_wr_fifo_full is being read.
+        predict_fw_ov_wr_fifo_full = 1;
+      end
     end else if (register == ral.OBSERVE_FIFO_DEPTH) begin
       if (!txn.m_request.m_write) begin
         // We can model the expected value in OBSERVE_FIFO_DEPTH, but we don't depend solely on the
