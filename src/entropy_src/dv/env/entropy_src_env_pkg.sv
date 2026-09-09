@@ -379,6 +379,7 @@ package entropy_src_env_pkg;
 
   `include "threshold_field_cbs.svh"
   `include "observe_fifo_depth_cbs.svh"
+  `include "err_code_cbs.svh"
 
   // package sources
   `include "entropy_src_dut_cfg.sv"

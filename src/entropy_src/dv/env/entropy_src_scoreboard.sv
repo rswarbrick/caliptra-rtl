@@ -58,6 +58,12 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
   // and use that to anticipate any alerts that may come about background diable events
   bit fifos_cleared = 1;
 
+  // An event that gets triggered when a change is seen that will make the next state of the main
+  // FSM equal to the error state.
+  //
+  // This is tracked by the state_machine_escalator task.
+  uvm_event m_escalate_state_machine_ev;
+
   // Queue of RNG data for health testing
   queue_of_rng_val_t               health_test_data_q;
 
@@ -234,6 +240,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
 
     rng_fifo   = new("rng_fifo", this);
     csrng_fifo = new("csrng_fifo", this);
+    m_escalate_state_machine_ev = new("m_escalate_state_machine_ev");
   endfunction
 
   function void connect_phase(uvm_phase phase);
@@ -251,6 +258,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         collect_entropy_tracker();
         health_test_scoring_thread();
         predict_fw_ov_wr_full();
+        state_machine_escalator();
       join_none
     end
   endtask
@@ -2043,6 +2051,30 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
     end
   endtask
 
+  // A task that monitors the m_escalate_state_machine_ev event. This event is intended to track the
+  // fact that the "state_d" signal in the main FSM has been set to point at a (terminal) error
+  // state.
+  //
+  // Once that happens, the task will wait one cycle (for the change to appear in "state_q") and
+  // then update predictions about the ERR_CODE register.
+  task state_machine_escalator();
+    forever begin
+      wait (!cfg.under_reset);
+      fork : isolation_fork begin
+        fork
+          wait (cfg.under_reset);
+          begin
+            m_escalate_state_machine_ev.wait_trigger();
+            cfg.clk_rst_vif.wait_clks(1);
+            cfg.m_err_code_cbs.assert_err(ral.ERR_CODE.ES_MAIN_SM_ERR);
+            wait (0);
+          end
+        join_any
+        disable fork;
+      end join
+    end
+  endtask
+
   virtual function void reset(string kind = "HARD");
     super.reset(kind);
 
@@ -2576,6 +2608,64 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
         // register model, because access to the FIFO might have changed the expected value since we
         // were last able to do a register prediction.
         exp_rdata = cfg.m_observe_fifo_depth_cbs.get_prediction();
+      end
+    end else if (register == ral.ERR_CODE_TEST) begin
+      if (txn.m_request.m_write) begin
+        uvm_reg_field  test_field   = ral.ERR_CODE_TEST.ERR_CODE_TEST;
+        uvm_reg_data_t test_mask    = ((uvm_reg_data_t'(1) << test_field.get_n_bits()) - 1);
+        uvm_reg_data_t wdata        = (txn.m_request.m_wdata & mask_from_size);
+        uvm_reg_data_t test_idx     = wdata & test_mask;
+        uvm_reg_data_t old_err_code = cfg.m_err_code_cbs.get_prediction();
+
+        uvm_reg_field  all_err_code_fields[$];
+        uvm_reg_field  err_code_field;
+        bit            is_fatal;
+
+        `uvm_info(get_full_name(),
+                  $sformatf("Received write of %0d to ERR_CODE_TEST (testing index %0d).",
+                            wdata, test_idx),
+                  UVM_MEDIUM)
+
+        // Can we find a field for this error code? Note that ERR_CODE is sparse: not all of the
+        // bits actually have fields.
+        ral.ERR_CODE.get_fields(all_err_code_fields);
+        foreach (all_err_code_fields[i]) begin
+          if (all_err_code_fields[i].get_lsb_pos() == test_idx) begin
+            err_code_field = all_err_code_fields[i];
+            break;
+          end
+        end
+
+        if (err_code_field == null) begin
+          `uvm_info(get_full_name(),
+                    $sformatf("Predicted ERR_CODE value: unchanged at %08x.", old_err_code),
+                    UVM_MEDIUM)
+        end else begin
+          `uvm_info(get_full_name(),
+                    $sformatf("Predicted ERR_CODE value: %08x | (1 << %0d) = 0x%0h.",
+                              old_err_code, test_idx, old_err_code | (1 << test_idx)),
+                    UVM_MEDIUM)
+        end
+
+        // Is the triggered error ES_CNTR_ERR? This is always fatal, and also causes an error in
+        // the main state machine (which will assert an extra bit in ERR_CODE a cycle later)
+        //
+        // If not, but there is an associated field, the error causes a fatal alert if the module is
+        // currently enabled.
+        if (err_code_field == ral.ERR_CODE.ES_CNTR_ERR) begin
+          is_fatal = 1;
+          m_escalate_state_machine_ev.trigger();
+        end else if (err_code_field != null) begin
+          is_fatal = dut_pipeline_enabled;
+        end
+
+        if (err_code_field != null) begin
+          cfg.m_err_code_cbs.assert_err(err_code_field);
+        end
+
+        if (is_fatal) begin
+          cov.on_err_test(test_idx);
+        end
       end
     end
 
