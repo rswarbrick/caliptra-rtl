@@ -33,8 +33,13 @@ class entropy_src_base_test extends dv_base_test #(
         phase.raise_objection(this, "entropy_src_base_test run_phase");
 
         // The standard run_phase will immediately start running a virtual sequence. Inject an reset
-        // beforehand.
-        if (cfg.is_active) env.get_reset_agent().reset_now();
+        // beforehand on the main rst_ni line and also on the CSRNG interface.
+        if (cfg.is_active) begin
+          fork
+            env.get_reset_agent().reset_now();
+            cfg.csrng_rst_vif.apply_reset();
+          join
+        end
 
         super.run_phase(phase);
 
