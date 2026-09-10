@@ -2001,7 +2001,7 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       if(!cfg.en_scb) begin
         continue;
       end
-      `uvm_info(`gfn, $sformatf("process_csrng: new item: %096h\n", item.d_data), UVM_HIGH)
+      `uvm_info(`gfn, $sformatf("process_csrng: new item: %096h\n", item.d_data), UVM_LOW)
 
       // Check to see whether a recov_alert should be expected
       if (seeds_out != 0 && get_csrng_seed(item.d_data) == prev_csrng_seed) begin
@@ -2023,13 +2023,13 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
           csrng_seeds++;
           cfg.total_seeds_consumed++;
           match_found = 1;
-          `uvm_info(`gfn, $sformatf("CSRNG Match found: %d\n", csrng_seeds), UVM_FULL)
+          `uvm_info(`gfn, $sformatf("CSRNG Match found: %d\n", csrng_seeds), UVM_LOW)
           break;
         end else begin
           csrng_drops++;
-          `uvm_info(`gfn, $sformatf("CSRNG Dropped seed: %d\n", csrng_drops), UVM_FULL)
-          `uvm_info(`gfn, $sformatf("item: %0x\n", item.d_data), UVM_FULL)
-          `uvm_info(`gfn, $sformatf("pred: %0x\n", prediction), UVM_FULL)
+          `uvm_info(`gfn, $sformatf("CSRNG Dropped seed: %d\n", csrng_drops), UVM_LOW)
+          `uvm_info(`gfn, $sformatf("item: %0x\n", item.d_data), UVM_LOW)
+          `uvm_info(`gfn, $sformatf("pred: %0x\n", prediction), UVM_LOW)
         end
       end : seed_trial_loop
 
