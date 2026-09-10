@@ -2011,6 +2011,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
       prev_csrng_seed = get_csrng_seed(item.d_data);
       seeds_out++;
 
+      if (!fips_csrng_q.size()) begin
+        `uvm_error(get_full_name(), "Saw a seed on csrng_fifo, but fips_csrng_q is empty.")
+      end
+
       while (fips_csrng_q.size() > 0) begin : seed_trial_loop
         bit [FIPS_CSRNG_BUS_WIDTH - 1:0] prediction;
         // Unlike in the TL case, there is no need to leave seed predictions in the queue.
@@ -2028,8 +2032,10 @@ class entropy_src_scoreboard extends dv_base_scoreboard#(
           `uvm_info(`gfn, $sformatf("pred: %0x\n", prediction), UVM_FULL)
         end
       end : seed_trial_loop
-      `DV_CHECK_EQ_FATAL(match_found, 1,
-                         "All candidate csrng seeds have been checked, with no match")
+
+      if (!match_found) begin
+        `uvm_error(get_full_name(), "All candidate csrng seeds have been checked, with no match")
+      end
     end
   endtask
 
